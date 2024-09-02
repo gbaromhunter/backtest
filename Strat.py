@@ -1,5 +1,7 @@
 import backtrader as bt
 from support import DonchianChannels
+
+
 class MyStrategy(bt.Strategy):
 
 
@@ -9,9 +11,9 @@ class MyStrategy(bt.Strategy):
         ('Donchian_Lookback', -1),
         ('RSI_Period', 14),
 
-        ('buy_treshold', 0.05),
+        ('buy_treshold', 0.10),
         ('stop_distance_factor', 0.03),
-        ('take_profit_distance_factor', 0.02),
+        ('take_profit_distance_factor', 0.03),
 
     )
 
@@ -24,6 +26,8 @@ class MyStrategy(bt.Strategy):
         self.take_profit_price = None
         self.trailing_profit_price = None
         self.last_value = None
+
+        self.total_candles = len(self.data.array)
 
         # Set the indicators
         self.donchian = DonchianChannels()
@@ -72,41 +76,23 @@ class MyStrategy(bt.Strategy):
         trade_pnl = (trade.pnlcomm / (self.last_value)) * 100
         if trade.isclosed:
             pnl, pnl_percentage = self.total_pnl_percentage()
-            self.log('CLOSED   Gross P/L: {:.2f}, Net P/L: {:.2f}, P/L Percentage: {:.2f}%, Current Capital: {:.2f}, Total P/L: {:.2f} - {:.2f}%'.format(trade.pnl, trade.pnlcomm, trade_pnl, self.broker.getvalue(), pnl, pnl_percentage))
+            self.log('CLOSED   Gross P/L: {:.2f}, Net P/L: {:.2f}, P/L Percentage: {:.2f}%, Current Capital: {:.2f}, Total P/L: {:.2f}, Total P/L Percentage: {:.2f}%'.format(trade.pnl, trade.pnlcomm, trade_pnl, self.broker.getvalue(), pnl, pnl_percentage))
             if trade.pnlcomm > 0: self.log('TAKE PROFIT')
             if trade.pnlcomm <= 0: self.log('STOP LOSS')
 
     def stop(self):
         pass
 
-
-
-    def next(self):
-        '''Runs for every candlestick. Checks conditions to enter and exit trades.'''
-        # Check if there is already an order
-
-        if self.order:
-            return
-
-        # BUY
-        self.buy_condition()
-
-        # STOP LOSS
-        if self.stop_loss_logic():
-            return
-
-        # TAKE PROFIT
-        self.take_profit_logic()
-
     def buy_condition(self):
         # Check that no position is opened
         if self.position.size == 0:
             if self.rsi[0] <= 30:
-                # Check if price is within percentage of the lower Bollinger Band
+                # Check if price is within percentage of the lower Donchian
                 if self.data.close[0] <= self.donchian.lines.dcl[0] * (1 + self.params.buy_treshold):
                     self.stop_price = self.donchian.lines.dcl[0] * (1 - self.params.stop_distance_factor)
                     self.take_profit_price = self.donchian.lines.dch[0] * (1 + self.params.take_profit_distance_factor)
                     self.order = self.buy()
+                    self.log(f'Lower donchian line: {self.donchian.lines.dcl[0]}, stop loss: {self.stop_price}, take_profit: {self.take_profit_price}')
                     return True
 
     def stop_loss_logic(self):
@@ -127,3 +113,26 @@ class MyStrategy(bt.Strategy):
                     self.trailing_profit_price = None
                     self.take_profit_price = None
                     return True
+
+    def next(self):
+        '''Runs for every candlestick. Checks conditions to enter and exit trades.'''
+        # Check if there is already an order
+
+        if self.order:
+            return
+
+        # BUY
+        self.buy_condition()
+
+        # STOP LOSS
+        if self.stop_loss_logic():
+            return
+
+        # TAKE PROFIT
+        self.take_profit_logic()
+
+
+        # Close the last trade to not influence final results with an open trade
+        if  len(self.data) == self.total_candles - 1:  # Check if the last few data points
+            if self.position:
+                self.order = self.close()
