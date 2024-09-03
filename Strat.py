@@ -9,11 +9,10 @@ class MyStrategy(bt.Strategy):
     params = (
         ('Donchian_Period', 20),
         ('Donchian_Lookback', -1),
-        ('RSI_Period', 14),
 
-        ('buy_treshold', 0.10),
-        ('stop_distance_factor', 0.03),
-        ('take_profit_distance_factor', 0.03),
+        ('buy_treshold', 0.3),
+        ('stop_distance_factor', 0.01),
+        ('take_profit_distance_factor', 0),
 
     )
 
@@ -27,19 +26,19 @@ class MyStrategy(bt.Strategy):
         self.trailing_profit_price = None
         self.last_value = None
 
-        self.total_candles = len(self.data.array)
+        self.total_candles = len(self.data0.array)
 
         # Set the indicators
-        self.donchian = DonchianChannels()
-        self.rsi = bt.indicators.RelativeStrengthIndex()
+        self.donchian = DonchianChannels(self.data0)
+        self.ichimoku = bt.indicators.Ichimoku(self.data0)
 
         # Set the indicators for the secondary timeframe
-        self.donchian1 = DonchianChannels()
-        self.rsi1 = bt.indicators.RelativeStrengthIndex()
-
+        self.donchian1 = DonchianChannels(self.data1)
+        self.ichimoku1 = bt.indicators.Ichimoku(self.data1)
 
         # Set Flags, Checks, Conditions
-        self.trend = None
+        self.buy_signal = bt.indicators.CrossUp(self.ichimoku1.lines.tenkan_sen, self.ichimoku1.lines.kijun_sen)
+        self.sell_signal = None
 
 
     def total_pnl_percentage(self):
@@ -86,29 +85,27 @@ class MyStrategy(bt.Strategy):
     def buy_condition(self):
         # Check that no position is opened
         if self.position.size == 0:
-            if self.rsi[0] <= 30:
-                # Check if price is within percentage of the lower Donchian
-                if self.data.close[0] <= self.donchian.lines.dcl[0] * (1 + self.params.buy_treshold):
-                    self.stop_price = self.donchian.lines.dcl[0] * (1 - self.params.stop_distance_factor)
-                    self.take_profit_price = self.donchian.lines.dch[0] * (1 + self.params.take_profit_distance_factor)
+            if self.buy_signal:
+                    self.stop_price = self.donchian1.lines.dcl[0] * (1 - self.params.stop_distance_factor)
+                    self.take_profit_price = self.donchian1.lines.dch[0] * (1 + self.params.take_profit_distance_factor)
                     self.order = self.buy()
-                    self.log(f'Lower donchian line: {self.donchian.lines.dcl[0]}, stop loss: {self.stop_price}, take_profit: {self.take_profit_price}')
+                    self.log(f'Lower donchian line: {self.donchian1.lines.dcl[0]}, higher donchian line: {self.donchian1.lines.dch[0]}, stop loss: {self.stop_price}, take_profit: {self.take_profit_price}')
                     return True
 
     def stop_loss_logic(self):
         if self.position.size > 0:
-            if self.data.close[0] <= self.stop_price:
+            if self.data0.close[0] <= self.stop_price:
                 self.close()
                 return True
 
     def take_profit_logic(self):
         if self.position.size > 0:
             if self.take_profit_price:
-                if self.data.close[0] >= self.take_profit_price:
-                    self.take_profit_price = self.data.close[0]
-                    self.trailing_profit_price = self.take_profit_price * (1 - self.params.take_profit_distance_factor)
+                if self.data0.close[0] >= self.take_profit_price:
+                    self.take_profit_price = self.data0.close[0]
+                    self.trailing_profit_price = self.take_profit_price * (1 + self.params.take_profit_distance_factor)
             if self.trailing_profit_price:
-                if self.data.close[0] <= self.trailing_profit_price:
+                if self.data0.close[0] <= self.trailing_profit_price:
                     self.close()
                     self.trailing_profit_price = None
                     self.take_profit_price = None
@@ -117,6 +114,11 @@ class MyStrategy(bt.Strategy):
     def next(self):
         '''Runs for every candlestick. Checks conditions to enter and exit trades.'''
         # Check if there is already an order
+
+        # self.log(f"bar {len(self.data)}, bar1 {len(self.data1)}")
+        # self.log(f"close {self.data.close[0]}, close1 {self.data1.close[0]}")
+        # self.log(f"donchian values: {self.donchian.lines.dcl[0]}, {self.donchian.lines.dch[0]} / {self.donchian1.lines.dcl[0]}, {self.donchian1.lines.dch[0]}")
+        # self.log(f"rsi values: {self.rsi[0]}, {self.rsi1[0]}")
 
         if self.order:
             return
@@ -133,6 +135,7 @@ class MyStrategy(bt.Strategy):
 
 
         # Close the last trade to not influence final results with an open trade
-        if  len(self.data) == self.total_candles - 1:  # Check if the last few data points
+        if  len(self.data0) == self.total_candles - 1:  # Check if the last few data points
             if self.position:
                 self.order = self.close()
+                self.log('Closing the last trade')

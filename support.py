@@ -4,6 +4,8 @@ from backtrader import Analyzer, TimeFrame, Sizer, Indicator
 from backtrader.mathsupport import average, standarddev
 from backtrader.analyzers import TimeReturn, AnnualReturn
 import backtrader as bt
+import argparse
+
 
 
 class DonchianChannels(Indicator):
@@ -160,3 +162,20 @@ class FixedRiskSizer(Sizer):
             position_size = capital_at_risk / stop_loss_distance
             return position_size  # Return position size as an integer
         return 0  # If it's not a buy order, return 0
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description='Sample for pivot point and cross plotting')
+
+    parser.add_argument('--data', required=False,
+                        default='../../datas/2005-2006-day-001.txt',
+                        help='Data to be read in')
+
+    parser.add_argument('--multi', required=False, action='store_true',
+                        help='Couple all lines of the indicator')
+
+    parser.add_argument('--plot', required=False, action='store_true',
+                        help=('Plot the result'))
+
+    return parser.parse_args()
