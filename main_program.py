@@ -1,55 +1,41 @@
+from support import *
 import backtrader as bt
-from atreyu_backtrader_api import IBData
 from Strat import MyStrategy
-import datetime as dt
-from support import FixedRiskSizer
-from support import SortinoRatio, CommissionAnalyzer, parse_args
-from test import TestStrategy
+# from test import TestStrategy
+
 
 # Create the Data object
-data = IBData(host='127.0.0.1', port=7497, clientId=35,
-               name="data",     # Data name
-               dataname='AMZN', # Symbol name
-               secType='STK',   # SecurityType is STOCK
-               exchange='SMART',# Trading exchange IB's SMART exchange
-               currency='USD',  # Currency of SecurityType
-               fromdate=dt.datetime(2024, 1, 1),
-               todate=dt.datetime(2024, 8, 30),
-               historical=True,
-               what='TRADES',  # Update this parameter to select data type
-               timeframe=bt.TimeFrame.Minutes,
-               compression=5,  # The timeframe size
-               backfill=True,
-               )
 
-# data1 = IBData(host='127.0.0.1', port=7497, clientId=35,
-#                name="data1",     # Data name
-#                dataname='AMZN', # Symbol name
-#                secType='STK',   # SecurityType is STOCK
-#                exchange='SMART',# Trading exchange IB's SMART exchange
-#                currency='USD',  # Currency of SecurityType
-#                fromdate=dt.datetime(2024, 2, 1),
-#                todate=dt.datetime(2024, 8, 30),
-#                historical=True,
-#                what='TRADES',  # Update this parameter to select data type
-#                timeframe=bt.TimeFrame.Minutes,
-#                compression=60  # The timeframe size
-#                )
+data = define_data_alphavantage(ticker='AMZN',
+                                start_year=2024,
+                                start_month=1,
+                                months=4,
+                                interval='1min',
+                                )
 
+# data = define_data_ib(ticker="AMZN",
+#                    )
+
+# data = define_data_yahoo("AMZN",
+#                    "2024-01-01",
+#                    "2024-08-31",
+#                    )
 
 
 def runstrat():
     args = parse_args()
     # Instantiate parameters
     cerebro = bt.Cerebro()
-    starting_cash = 10000
     # Specify the strategy
-    # cerebro.addstrategy((MyStrategy))
-    cerebro.addstrategy(TestStrategy)
+    cerebro.addstrategy(MyStrategy)
 
+    # Add the data
+    cerebro.adddata(data)
+    # Resample the first smaller timeframe into a bigger timeframe
+    cerebro.resampledata(data, timeframe=bt.TimeFrame.Minutes, compression=15)
 
-    cerebro.adddata(data, name='data')
-    # cerebro.resampledata(data, timeframe=bt.TimeFrame.Minutes, compression=15)
+    # Set the initial cash amount and the commission costs
+    starting_cash = 10000
     cerebro.broker.setcash(starting_cash)
     cerebro.broker.setcommission(commission=0.00035)
 
@@ -98,7 +84,7 @@ def runstrat():
     print(f"Sortino Ratio: {sortino.get('sortinoratio', 'N/A')}")  # Custom metric
     print(f"Max Drawdown Percentage: {drawdown['max']['drawdown']:.2f}%")
     print(f"Max Drawdown Value: {drawdown['max']['moneydown']:.2f}")
-    print(f"Max Drawdown Duration: {drawdown['max']['len']:.2f}")
+    print(f"Max Drawdown Duration: {drawdown['max']['len']:.2f} - {round(drawdown['max']['len'] / 3600, 2)} Days")
     print(f"Total Return: {returns['rtot'] * 100:.2f}%")
 
     # Accessing trade details
@@ -111,9 +97,8 @@ def runstrat():
         print(f"Win Rate: {trade_analyzer.won.total / trade_analyzer.total.total * 100:.2f}%")
         print(f"Max Win Amount: {trade_analyzer.won.pnl.max:.2f} / Average Win Amount: {trade_analyzer.won.pnl.average:.2f}")
         print(f"Max Loss Amount: {trade_analyzer.lost.pnl.max:.2f} / Average Loss Amount: {trade_analyzer.lost.pnl.average:.2f}")
-        print(f"Average Trade Duration Bars: {trade_analyzer.len.average:.2f}")
+        print(f"Average Trade Duration Bars: {trade_analyzer.len.average:.2f} - {trade_analyzer.len.average / 60:.2f} Hours - {trade_analyzer.len.average / 3600:.2f} Days")
         print(f"Total Commission Costs: {commission_analysis['total_commission']:.2f}")
-
     else:
         print("No trade executed")
 

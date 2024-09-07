@@ -10,8 +10,7 @@ class MyStrategy(bt.Strategy):
         ('Donchian_Period', 20),
         ('Donchian_Lookback', -1),
 
-        ('buy_treshold', 0.3),
-        ('stop_distance_factor', 0.01),
+        ('stop_distance_factor', -0.01),
         ('take_profit_distance_factor', 0),
 
     )
@@ -86,7 +85,7 @@ class MyStrategy(bt.Strategy):
         # Check that no position is opened
         if self.position.size == 0:
             if self.buy_signal:
-                    self.stop_price = self.donchian1.lines.dcl[0] * (1 - self.params.stop_distance_factor)
+                    self.stop_price = self.donchian1.lines.dcl[0] * (1 + self.params.stop_distance_factor)
                     self.take_profit_price = self.donchian1.lines.dch[0] * (1 + self.params.take_profit_distance_factor)
                     self.order = self.buy()
                     self.log(f'Lower donchian line: {self.donchian1.lines.dcl[0]}, higher donchian line: {self.donchian1.lines.dch[0]}, stop loss: {self.stop_price}, take_profit: {self.take_profit_price}')
@@ -135,7 +134,8 @@ class MyStrategy(bt.Strategy):
 
 
         # Close the last trade to not influence final results with an open trade
-        if  len(self.data0) == self.total_candles - 1:  # Check if the last few data points
+        if  len(self.data) == self.total_candles - 1:  # Check if the last few data points
             if self.position:
                 self.order = self.close()
+                self.log('Last trade executed')
                 self.log('Closing the last trade')

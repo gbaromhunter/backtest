@@ -5,6 +5,15 @@ from backtrader.mathsupport import average, standarddev
 from backtrader.analyzers import TimeReturn, AnnualReturn
 import backtrader as bt
 import argparse
+from atreyu_backtrader_api import IBData
+import os
+import pandas as pd
+import yfinance as yf
+from datetime import datetime
+from ib_insync import *
+import requests
+import csv
+from io import StringIO
 
 
 
@@ -179,3 +188,237 @@ def parse_args():
                         help=('Plot the result'))
 
     return parser.parse_args()
+
+def load_data(file_name):
+    """Load data from CSV file."""
+    data = pd.read_csv(file_name, index_col='Date', parse_dates=True)
+    data = bt.feeds.PandasData(
+        dataname=data,
+        datetime=None,  # Backtrader will use the index as datetime
+        open=0,
+        high=1,
+        low=2,
+        close=3,
+        volume=4
+    )
+    return data
+
+def fetch_data_from_yahoo(ticker, start_date, end_date, file_name):
+    """Download data from Yahoo Finance and save it as a CSV."""
+    data = yf.download(ticker, start=start_date, end=end_date)
+    data = data.drop(columns=['Adj Close'])
+    data.index.name = 'Date'  # Ensure the index is named 'Date'
+    data.to_csv(file_name)
+    data = bt.feeds.PandasData(
+        dataname=data,
+        datetime=None,  # Backtrader will use the index as datetime
+        open=0,
+        high=1,
+        low=2,
+        close=3,
+        volume=4
+    )
+    return data
+
+def define_data_yahoo(ticker, start_date, end_date):
+    ticker = ticker  # Stock ticker
+    start_date = start_date  # Start date for fetching data
+    end_date = datetime.today().strftime('%Y-%m-%d') if end_date == None else end_date  # Today's date as the end date
+    file_name = f"{ticker}_data.csv"  # File name for saving the data
+
+    # Convert pandas dataframe to Backtrader data feed
+
+    # Check if CSV exists, otherwise download the data
+    if not os.path.exists(file_name):
+        print(f"CSV file not found. Downloading data for {ticker} from Yahoo Finance...")
+        data = fetch_data_from_yahoo(ticker, start_date, end_date, file_name)
+    else:
+        print(f"CSV file found. Loading data from {file_name}...")
+        data = load_data(file_name)
+
+    return data
+
+def fetch_data_from_IB(ticker, file_name): # Broken
+    util.startLoop()
+
+    ib = IB()
+    ib.connect('127.0.0.1', 7497, clientId=35)
+    contract = Stock(ticker=ticker, exchange='SMART', currency='USD')
+
+    data = ib.reqHistoricalData(
+        contract,
+        endDateTime='',
+        barSizeSetting='1 min',
+        durationStr='7 D',
+        whatToShow='TRADES',
+        useRTH=True,
+        formatDate=1,
+        keepUpToDate=True)
+
+    data = pd.DataFrame(data, columns=['Date', 'Open', 'High', 'Low', 'Close', 'Volume'])
+    data.to_csv(file_name)
+    data = bt.feeds.PandasData(
+        dataname=data,
+        datetime=None,  # Backtrader will use the index as datetime
+        open=0,
+        high=1,
+        low=2,
+        close=3,
+        volume=4
+    )
+    return data
+
+    # def fetch_data_from_IB(ticker, start_date, end_date, file_name, timeframe, compression):
+    # timeframes = {'minutes': bt.TimeFrame.Minutes,
+    #               'days': bt.TimeFrame.Days,
+    #               'weeks': bt.TimeFrame.Weeks,
+    #               'months': bt.TimeFrame.Months,}
+    # data = IBData(host='127.0.0.1', port=7497, clientId=35,
+    #                name="data",     # Data name
+    #                dataname=ticker, # Symbol name
+    #                secType='STK',   # SecurityType is STOCK
+    #                exchange='SMART',# Trading exchange IB's SMART exchange
+    #                currency='USD',  # Currency of SecurityType
+    #                fromdate=start_date,
+    #                todate=end_date,
+    #                what='TRADES',  # Update this parameter to select data type
+    #                timeframe=timeframes[timeframe],
+    #                compression=compression,  # The timeframe size
+    #                # latethrough=True,
+    #                )
+    # data = util.df(data)
+    #
+    # data = data.drop(columns=['Adj Close'])
+    # data.index.name = 'Date'  # Ensure the index is named 'Date'
+    # data.to_csv(file_name)
+    # data = bt.feeds.PandasData(
+    #     dataname=data,
+    #     datetime=None,  # Backtrader will use the index as datetime
+    #     open=0,
+    #     high=1,
+    #     low=2,
+    #     close=3,
+    #     volume=4
+    # )
+    # return data
+
+def define_data_ib(ticker):
+    file_name = f"{ticker}_data.csv"  # File name for saving the data
+
+    # Convert pandas dataframe to Backtrader data feed
+
+    # Check if CSV exists, otherwise download the data
+    if not os.path.exists(file_name):
+        print(f"CSV file not found. Downloading data for {ticker} from IBKR...")
+        data = fetch_data_from_IB(ticker, file_name)
+    else:
+        print(f"CSV file found. Loading data from {file_name}...")
+        data = load_data(file_name)
+
+    return data
+
+
+def define_data_alphavantage(ticker, start_year, start_month, months, interval):
+    file_name = f"{ticker}_data.csv"
+
+    if not os.path.exists(file_name):
+        print(f"CSV file not found. Downloading data for {ticker} from Alphavantage...")
+        fetch_intraday_data_from_alphavantage(ticker, start_year, start_month, months, interval)
+        print(f"CSV file found. Loading data from {file_name}...")
+        data = load_data(file_name)
+    else:
+        print(f"CSV file found. Loading data from {file_name}...")
+        data = load_data(file_name)
+
+    return data
+
+
+# def fetch_intraday_data_from_alphavantage(ticker, interval='1min', month=''):
+#     """
+#     Download 1-minute intraday historical data from Alpha Vantage API and save it to a CSV file.
+#
+#     Parameters:
+#     - symbol (str): Stock symbol to fetch data for (e.g., 'AAPL')
+#     - api_key (str): Your Alpha Vantage API key
+#     - output_file (str): The name of the CSV file to save the data to (default is 'intraday_data.csv')
+#     - interval (str): Interval for intraday data ('1min', '5min', '15min', '30min', '60min')
+#     """
+#     output_file = f'{ticker}_data.csv'
+#     api_key = '5BAAAUMO47W9TG46'
+#
+#     url = f'https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol={ticker}&interval={interval}&apikey={api_key}&month={month}&outputsize=full&datatype=csv'
+#
+#     response = requests.get(url)
+#
+#     if response.status_code == 200:
+#
+#         # Load the CSV data into a pandas DataFrame
+#         data = pd.read_csv(StringIO(response.text))
+#
+#         # Rename the first column to 'date'
+#         data.rename(columns={data.columns[0]: 'Date'}, inplace=True)
+#
+#         # Set the 'date' column as the index
+#         data.set_index('Date', inplace=True)
+#
+#         # if you need to reverse the data
+#         data = data[::-1]
+#
+#         # Save the DataFrame to a CSV file
+#         data.to_csv(output_file)
+#
+#         print(f"Data successfully saved to {output_file}")
+#     else:
+#         print(f"Failed to retrieve data: {response.status_code}")
+
+
+def fetch_intraday_data_from_alphavantage(ticker, start_year, start_month, months, interval):
+    """
+    Download 1-minute intraday historical data from Alpha Vantage API for multiple months and save it to a CSV file.
+
+    Parameters:
+    - ticker (str): Stock symbol to fetch data for (e.g., 'AAPL')
+    - interval (str): Interval for intraday data ('1min', '5min', '15min', '30min', '60min')
+    - months (list of str): List of months to fetch data for in 'YYYY-MM' format (e.g., ['2024-01', '2024-02'])
+    """
+    api_key = '5BAAAUMO47W9TG46'
+    all_data = []
+    for _ in range(months):
+        if start_month > 12:
+            start_year = start_year + 1
+            start_month = 1
+        month = f'{start_year}-{start_month:02d}'
+        url = f'https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol={ticker}&interval={interval}&apikey={api_key}&month={month}&outputsize=full&datatype=csv'
+        start_month = start_month + 1
+        response = requests.get(url)
+
+        if response.status_code == 200:
+            # Load the CSV data into a pandas DataFrame
+            data = pd.read_csv(StringIO(response.text))
+
+            # Rename the first column to 'Date'
+            data.rename(columns={data.columns[0]: 'Date'}, inplace=True)
+
+            # Set the 'Date' column as the index
+            data.set_index('Date', inplace=True)
+
+            # Reverse the data if needed
+            data = data[::-1]
+
+            # Append the data to the list
+            all_data.append(data)
+        else:
+            print(f"Failed to retrieve data for {month}: {response.status_code}")
+
+
+    if all_data:
+        # Concatenate all data frames into a single DataFrame
+        combined_data = pd.concat(all_data)
+
+        # Save the combined DataFrame to a CSV file
+        output_file = f'{ticker}_data.csv'
+        combined_data.to_csv(output_file)
+
+        print(f"Data successfully saved to {output_file}")
+    else:
+        print("No data was retrieved.")

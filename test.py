@@ -7,7 +7,8 @@ class TestStrategy(bt.Strategy):
 
     def next(self):
         # Log the closing price of the data on each bar
-        self.log(f'Close: {self.data.close[0]}')
+        self.log(f'Close data: {self.datas[0].close[0]}')
+        self.log(f'Close data1: {self.datas[1].close[0]}')
 
     def log(self, txt):
         ''' Logging function for this strategy'''
