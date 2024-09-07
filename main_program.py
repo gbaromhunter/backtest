@@ -3,13 +3,14 @@ import backtrader as bt
 from Strat import MyStrategy
 import quantstats
 import warnings
+import time
 warnings.simplefilter(action='ignore', category=FutureWarning)
 # from test import TestStrategy
 
 
 # Create the Data object
 
-data = define_data_alphavantage(ticker='AMZN',
+data, total_candles = define_data_alphavantage(ticker='AMZN',
                                 start_year=2024,
                                 start_month=1,
                                 months=4,
@@ -26,11 +27,12 @@ data = define_data_alphavantage(ticker='AMZN',
 
 
 def runstrat():
+    start_time = time.time()
     args = parse_args()
     # Instantiate parameters
     cerebro = bt.Cerebro()
     # Specify the strategy
-    cerebro.addstrategy(MyStrategy)
+    cerebro.addstrategy(MyStrategy, total_candles=total_candles)
 
     # Add the data
     cerebro.adddata(data)
@@ -41,8 +43,6 @@ def runstrat():
     starting_cash = 10000
     cerebro.broker.setcash(starting_cash)
     cerebro.broker.setcommission(commission=0.00035)
-
-
 
     # Add Analyzers
     cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe')
@@ -70,6 +70,18 @@ def runstrat():
     results = cerebro.run(runonce=False)
     strat = results[0]
 
+    # Record the end time
+    end_time = time.time()
+
+    # Calculate the elapsed time
+    elapsed_time = end_time - start_time
+
+    # Convert elapsed time to minutes and seconds
+    minutes, seconds = divmod(elapsed_time, 60)
+
+    # Print the elapsed time
+    print(f"Backtest completed in {int(minutes)} minutes and {int(seconds)} seconds")
+
     # Print ending cash
     print(f'\nEnding Portfolio Value: {cerebro.broker.getvalue():.2f}')
 
@@ -82,32 +94,10 @@ def runstrat():
     portfolio_stats = strat.analyzers.getbyname('PyFolio')
     ret, positions, transactions, gross_lev = portfolio_stats.get_pf_items()
     ret.index = ret.index.tz_convert(None)
-
-    # Print metrics
-    print(f"Total Return: {returns['rtot'] * 100:.2f}%")
-
-    # Accessing trade details
-    print('\n--- Trade Analyzer Detailed Results ---')
-    print(f"Total Trades: {trade_analyzer.total.total}")
-
     quantstats.reports.html(ret, output='stats.html', title='Backtest results')
 
-    if trade_analyzer.total.total != 0:
-        print(f"Total Won: {trade_analyzer.won.total} / Total Lost: {trade_analyzer.lost.total}")
-        print(f"Net Profit: {trade_analyzer.pnl.net.total:.2f} / Net Profit Percentage: {(trade_analyzer.pnl.net.total / starting_cash * 100):.2f}%")
-        print(f"Win Rate: {trade_analyzer.won.total / trade_analyzer.total.total * 100:.2f}%")
-        print(f"Max Win Amount: {trade_analyzer.won.pnl.max:.2f} / Average Win Amount: {trade_analyzer.won.pnl.average:.2f}")
-        print(f"Max Loss Amount: {trade_analyzer.lost.pnl.max:.2f} / Average Loss Amount: {trade_analyzer.lost.pnl.average:.2f}")
-        print(f"Average Trade Duration Bars: {trade_analyzer.len.average:.2f} - {trade_analyzer.len.average / 60:.2f} Hours - {trade_analyzer.len.average / 3600:.2f} Days")
-        print(f"Total Commission Costs: {commission_analysis['total_commission']:.2f}")
-    else:
-        print("No trade executed")
 
-
-
-
-
-
+    print_end(returns, trade_analyzer, starting_cash, commission_analysis)
 
 
 if __name__ == '__main__':

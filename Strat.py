@@ -9,7 +9,7 @@ class MyStrategy(bt.Strategy):
     params = (
         ('Donchian_Period', 20),
         ('Donchian_Lookback', -1),
-
+        ('total_candles', 0),
         ('stop_distance_factor', -0.01),
         ('take_profit_distance_factor', 0),
 
@@ -25,7 +25,7 @@ class MyStrategy(bt.Strategy):
         self.trailing_profit_price = None
         self.last_value = None
 
-        self.total_candles = len(self.data0.array)
+        self.total_candles = self.params.total_candles
 
         # Set the indicators
         self.donchian = DonchianChannels(self.data0)
@@ -114,11 +114,6 @@ class MyStrategy(bt.Strategy):
         '''Runs for every candlestick. Checks conditions to enter and exit trades.'''
         # Check if there is already an order
 
-        # self.log(f"bar {len(self.data)}, bar1 {len(self.data1)}")
-        # self.log(f"close {self.data.close[0]}, close1 {self.data1.close[0]}")
-        # self.log(f"donchian values: {self.donchian.lines.dcl[0]}, {self.donchian.lines.dch[0]} / {self.donchian1.lines.dcl[0]}, {self.donchian1.lines.dch[0]}")
-        # self.log(f"rsi values: {self.rsi[0]}, {self.rsi1[0]}")
-
         if self.order:
             return
 
@@ -134,8 +129,7 @@ class MyStrategy(bt.Strategy):
 
 
         # Close the last trade to not influence final results with an open trade
-        if  len(self.data) == self.total_candles - 1:  # Check if the last few data points
+        if len(self.data0) == self.total_candles -1:
             if self.position:
                 self.order = self.close()
-                self.log('Last trade executed')
                 self.log('Closing the last trade')

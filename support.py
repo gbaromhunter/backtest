@@ -5,14 +5,13 @@ from backtrader.mathsupport import average, standarddev
 from backtrader.analyzers import TimeReturn, AnnualReturn
 import backtrader as bt
 import argparse
-from atreyu_backtrader_api import IBData
+# from atreyu_backtrader_api import IBData
 import os
 import pandas as pd
 import yfinance as yf
 from datetime import datetime
 from ib_insync import *
 import requests
-import csv
 from io import StringIO
 
 
@@ -48,6 +47,7 @@ class DonchianChannels(Indicator):
         if self.p.lookback:  # move backwards as needed
             hi, lo = hi(self.p.lookback), lo(self.p.lookback)
 
+        # noinspection PyArgumentList
         self.l.dch = bt.ind.Highest(hi, period=self.p.period)
         self.l.dcl = bt.ind.Lowest(lo, period=self.p.period)
         self.l.dcm = (self.l.dch + self.l.dcl) / 2.0  # avg of the above
@@ -189,6 +189,10 @@ def parse_args():
 
     return parser.parse_args()
 
+def count_rows_in_csv(file_path):
+    df = pd.read_csv(file_path)
+    return len(df)
+
 def load_data(file_name):
     """Load data from CSV file."""
     data = pd.read_csv(file_name, index_col='Date', parse_dates=True)
@@ -326,51 +330,13 @@ def define_data_alphavantage(ticker, start_year, start_month, months, interval):
         fetch_intraday_data_from_alphavantage(ticker, start_year, start_month, months, interval)
         print(f"CSV file found. Loading data from {file_name}...")
         data = load_data(file_name)
+        total_candles = count_rows_in_csv(file_name)
+
     else:
         print(f"CSV file found. Loading data from {file_name}...")
         data = load_data(file_name)
-
-    return data
-
-
-# def fetch_intraday_data_from_alphavantage(ticker, interval='1min', month=''):
-#     """
-#     Download 1-minute intraday historical data from Alpha Vantage API and save it to a CSV file.
-#
-#     Parameters:
-#     - symbol (str): Stock symbol to fetch data for (e.g., 'AAPL')
-#     - api_key (str): Your Alpha Vantage API key
-#     - output_file (str): The name of the CSV file to save the data to (default is 'intraday_data.csv')
-#     - interval (str): Interval for intraday data ('1min', '5min', '15min', '30min', '60min')
-#     """
-#     output_file = f'{ticker}_data.csv'
-#     api_key = '5BAAAUMO47W9TG46'
-#
-#     url = f'https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol={ticker}&interval={interval}&apikey={api_key}&month={month}&outputsize=full&datatype=csv'
-#
-#     response = requests.get(url)
-#
-#     if response.status_code == 200:
-#
-#         # Load the CSV data into a pandas DataFrame
-#         data = pd.read_csv(StringIO(response.text))
-#
-#         # Rename the first column to 'date'
-#         data.rename(columns={data.columns[0]: 'Date'}, inplace=True)
-#
-#         # Set the 'date' column as the index
-#         data.set_index('Date', inplace=True)
-#
-#         # if you need to reverse the data
-#         data = data[::-1]
-#
-#         # Save the DataFrame to a CSV file
-#         data.to_csv(output_file)
-#
-#         print(f"Data successfully saved to {output_file}")
-#     else:
-#         print(f"Failed to retrieve data: {response.status_code}")
-
+        total_candles = count_rows_in_csv(file_name)
+    return data, total_candles
 
 def fetch_intraday_data_from_alphavantage(ticker, start_year, start_month, months, interval):
     """
@@ -422,5 +388,25 @@ def fetch_intraday_data_from_alphavantage(ticker, start_year, start_month, month
         print(f"Data successfully saved to {output_file}")
     else:
         print("No data was retrieved.")
+
+def print_end(returns, trade_analyzer, starting_cash, commission_analysis):
+    # Print metrics
+    print(f"Total Return: {returns['rtot'] * 100:.2f}%")
+
+    # Accessing trade details
+    print('\n--- Trade Analyzer Detailed Results ---')
+    print(f"Total Trades: {trade_analyzer.total.total}")
+
+
+    if trade_analyzer.total.total != 0:
+        print(f"Total Won: {trade_analyzer.won.total} / Total Lost: {trade_analyzer.lost.total}")
+        print(f"Net Profit: {trade_analyzer.pnl.net.total:.2f} / Net Profit Percentage: {(trade_analyzer.pnl.net.total / starting_cash * 100):.2f}%")
+        print(f"Win Rate: {trade_analyzer.won.total / trade_analyzer.total.total * 100:.2f}%")
+        print(f"Max Win Amount: {trade_analyzer.won.pnl.max:.2f} / Average Win Amount: {trade_analyzer.won.pnl.average:.2f}")
+        print(f"Max Loss Amount: {trade_analyzer.lost.pnl.max:.2f} / Average Loss Amount: {trade_analyzer.lost.pnl.average:.2f}")
+        print(f"Average Trade Duration Bars: {trade_analyzer.len.average:.2f} - {trade_analyzer.len.average / 60:.2f} Hours - {trade_analyzer.len.average / 3600:.2f} Days")
+        print(f"Total Commission Costs: {commission_analysis['total_commission']:.2f}")
+    else:
+        print("No trade executed")
 
 
