@@ -1,6 +1,9 @@
 from support import *
 import backtrader as bt
 from Strat import MyStrategy
+import quantstats
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 # from test import TestStrategy
 
 
@@ -51,11 +54,11 @@ def runstrat():
     cerebro.addanalyzer(SortinoRatio, _name='sortino')
     cerebro.addanalyzer(CommissionAnalyzer, _name='commissions')
     cerebro.addsizer(FixedRiskSizer)
+    cerebro.addanalyzer(bt.analyzers.PyFolio, _name='PyFolio')
 
     # Add Observers (e.g., log cash value, portfolio value)
     cerebro.addobserver(bt.observers.Value)
     cerebro.addobserver(bt.observers.Trades)
-    cerebro.addobserver(bt.observers.DrawDown)
 
     # Print starting cash
     print(f'Starting Portfolio Value: {cerebro.broker.getvalue():.2f}')
@@ -65,31 +68,29 @@ def runstrat():
         cerebro.plot(style='bar')
 
     results = cerebro.run(runonce=False)
+    strat = results[0]
 
     # Print ending cash
     print(f'\nEnding Portfolio Value: {cerebro.broker.getvalue():.2f}')
 
     # Access and print metrics from analyzers
-    sharpe = results[0].analyzers.sharpe.get_analysis()
-    drawdown = results[0].analyzers.drawdown.get_analysis()
     returns = results[0].analyzers.returns.get_analysis()
     trade_analyzer = results[0].analyzers.trade_analyzer.get_analysis()
 
     # Access and print metrics from custom analyzers
-    sortino = results[0].analyzers.sortino.get_analysis()
     commission_analysis = results[0].analyzers.commissions.get_analysis()
+    portfolio_stats = strat.analyzers.getbyname('PyFolio')
+    ret, positions, transactions, gross_lev = portfolio_stats.get_pf_items()
+    ret.index = ret.index.tz_convert(None)
 
     # Print metrics
-    print(f"\nSharpe Ratio: {sharpe.get('sharperatio', 'N/A')}")
-    print(f"Sortino Ratio: {sortino.get('sortinoratio', 'N/A')}")  # Custom metric
-    print(f"Max Drawdown Percentage: {drawdown['max']['drawdown']:.2f}%")
-    print(f"Max Drawdown Value: {drawdown['max']['moneydown']:.2f}")
-    print(f"Max Drawdown Duration: {drawdown['max']['len']:.2f} - {round(drawdown['max']['len'] / 3600, 2)} Days")
     print(f"Total Return: {returns['rtot'] * 100:.2f}%")
 
     # Accessing trade details
     print('\n--- Trade Analyzer Detailed Results ---')
     print(f"Total Trades: {trade_analyzer.total.total}")
+
+    quantstats.reports.html(ret, output='stats.html', title='Backtest results')
 
     if trade_analyzer.total.total != 0:
         print(f"Total Won: {trade_analyzer.won.total} / Total Lost: {trade_analyzer.lost.total}")

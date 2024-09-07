@@ -422,3 +422,5 @@ def fetch_intraday_data_from_alphavantage(ticker, start_year, start_month, month
         print(f"Data successfully saved to {output_file}")
     else:
         print("No data was retrieved.")
+
+
