@@ -1,6 +1,6 @@
 from support import *
 import backtrader as bt
-from Strat import MyStrategy
+from old_strategy import MyStrategy
 import quantstats
 import warnings
 import time
