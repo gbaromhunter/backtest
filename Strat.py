@@ -12,6 +12,8 @@ class MyStrategy(bt.Strategy):
         ('Donchian_Period', 20),
         ('Donchian_Lookback', -1),
 
+        ('order_factor', 0.02),
+
         ('stop_distance_factor', 0.01),
         ('take_profit_distance_factor', 0),
     )
@@ -33,6 +35,7 @@ class MyStrategy(bt.Strategy):
         # Set the indicators for the secondary timeframe
         self.donchian = DonchianChannels(self.data1)
         self.ichimoku = bt.indicators.Ichimoku(self.data1)
+        self.ichimoku1 = bt.indicators.Ichimoku(self.data2)
 
         # Set Flags, Checks, Conditions
         self.uptrend = False
@@ -83,50 +86,49 @@ class MyStrategy(bt.Strategy):
 
     def buy_condition(self):
         conditions = [
-            bt.indicators.CrossUp(self.ichimoku.lines.tenkan_sen, self.ichimoku.lines.kijun_sen),
+            self.data0.close[0] < self.donchian.lines.dcl[0] * (1 + self.params.order_factor)
         ]
         if all(conditions):
             return True
 
     def sell_condition(self):
         conditions = [
-            bt.indicators.CrossDown(self.ichimoku.lines.tenkan_sen, self.ichimoku.lines.kijun_sen),
+            self.data0.close[0] > self.donchian.lines.dch[0] * (1 - self.params.order_factor)
         ]
         if all(conditions):
             return True
 
     def define_trend(self):
-        if all([self.data0.close[-26] < self.ichimoku.lines.chikou_span[0],
-                self.data0.close[0] > self.ichimoku.lines.senkou_span_a and self.data0.close[0] > self.ichimoku.lines.senkou_span_b,
+        if all([
+                self.data0.close[0] > self.ichimoku1.lines.senkou_span_a[0],
+                self.data0.close[0] > self.ichimoku1.lines.senkou_span_b[0],
                 ]):
             self.uptrend, self.downtrend, self.notrend = True, False, False
-
-        elif all([self.data0.close[-26] > self.ichimoku.lines.chikou_span[0],
-                  self.data0.close[0] < self.ichimoku.lines.senkou_span_a and self.data0.close[0] < self.ichimoku.lines.senkou_span_b,
+        elif all([
+                  self.data0.close[0] < self.ichimoku1.lines.senkou_span_a[0],
+                  self.data0.close[0] < self.ichimoku1.lines.senkou_span_b[0],
                  ]):
             self.uptrend, self.downtrend, self.notrend = False, True, False
         else:
             self.uptrend, self.downtrend, self.notrend = False, False, True
 
-
-
     def buy_logic(self):
         # Check that no position is opened
         if self.position.size == 0:
-            if self.uptrend and self.buy_condition():
+            if self.uptrend:
+                if self.buy_condition():
                     self.stop_price = self.donchian.lines.dcl[0] * (1 - self.params.stop_distance_factor)
                     self.take_profit_price = self.donchian.lines.dch[0] * (1 + self.params.take_profit_distance_factor)
                     self.order = self.buy()
-                    self.log(f'Lower donchian line: {self.donchian.lines.dcl[0]}, higher donchian line: {self.donchian.lines.dch[0]}, stop loss: {self.stop_price}, take_profit: {self.take_profit_price}')
                     return True
     def sell_logic(self):
         if self.position.size == 0:
-            if self.downtrend and self.sell_condition():
-                self.stop_price = self.donchian.lines.dch[0] * (1 + self.params.stop_distance_factor)
-                self.take_profit_price = self.donchian.lines.dcl[0] * (1 - self.params.take_profit_distance_factor)
-                self.order = self.sell()
-                self.log(f'Lower donchian line: {self.donchian.lines.dcl[0]}, higher donchian line: {self.donchian.lines.dch[0]}, stop loss: {self.stop_price}, take_profit: {self.take_profit_price}')
-                return True
+            if self.downtrend:
+                if self.sell_condition():
+                    self.stop_price = self.donchian.lines.dch[0] * (1 + self.params.stop_distance_factor)
+                    self.take_profit_price = self.donchian.lines.dcl[0] * (1 - self.params.take_profit_distance_factor)
+                    self.order = self.sell()
+                    return True
 
     def stop_loss_logic(self):
         if self.position.size > 0:
@@ -150,10 +152,10 @@ class MyStrategy(bt.Strategy):
     def next(self):
         '''Runs for every candlestick. Checks conditions to enter and exit trades.'''
         # Check if there is already an order
-        self.define_trend()
         if self.order:
             return
-
+        # define the trend
+        self.define_trend()
         # BUY
         self.buy_logic()
         self.sell_logic()

@@ -1,6 +1,6 @@
 from support import *
 import backtrader as bt
-from old_strategy import MyStrategy
+from Strat import MyStrategy
 import quantstats
 import warnings
 import time
@@ -38,6 +38,7 @@ def runstrat():
     cerebro.adddata(data)
     # Resample the first smaller timeframe into a bigger timeframe
     cerebro.resampledata(data, timeframe=bt.TimeFrame.Minutes, compression=15)
+    cerebro.resampledata(data, timeframe=bt.TimeFrame.Minutes, compression=60)
 
     # Set the initial cash amount and the commission costs
     starting_cash = 10000
