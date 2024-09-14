@@ -16,7 +16,7 @@ class MyStrategy(bt.Strategy):
         ('ichimoku_trend_factor', 0.01),
 
         ('risk_per_trade', 0.003),
-        ('stop_distance_factor', 0.005),
+        ('stop_distance_factor', 0.01),
         ('take_profit_distance_factor', 0.01),
         ('take_profit_trigger_factor', 0.4),
     )
@@ -63,18 +63,26 @@ class MyStrategy(bt.Strategy):
     def notify_order(self, order):
         '''Run on every next iteration. Checks order status and logs accordingly'''
         if order.status in [order.Submitted, order.Accepted]:
+            # Order has been submitted or accepted but not yet completed
             return
-        elif order.status == order.Completed:
+
+        # Log only when order is completed or rejected/margin issue
+        if order.status == order.Completed:
             if order.isbuy():
-                self.log('BUY   price: {:.2f}, value: {:.2f}, commission: {:.2f}'.format(order.executed.price, order.executed.value, order.executed.comm))
-            if order.issell():
-                self.log('SELL   price: {:.2f}, commission: {:.2f}'.format(order.executed.price, order.executed.comm))
+                self.log('BUY   price: {:.2f}, size: {:.2f}, commission: {:.2f}'.format(
+                    order.executed.price, order.executed.size, order.executed.comm))
+            elif order.issell():
+                self.log('SELL  price: {:.2f}, size: {:.2f}, commission: {:.2f}'.format(
+                    order.executed.price, order.executed.size, order.executed.comm))
         elif order.status in [order.Rejected, order.Margin]:
-            self.log('Order Rejected/Margin')
+            # Log only for rejected or margin issues
+            self.log('ORDER REJECTED/MARGIN ISSUE - {}'.format(order.status))
 
-        self.last_value = order.executed.value
+        # Update the last_value only if the order was completed
+        if order.status == order.Completed:
+            self.last_value = order.executed.value
 
-        # change order variable back to None to indicate no pending order
+        # Change the order variable back to None to indicate no pending order
         self.order = None
 
     def notify_trade(self, trade):
@@ -91,17 +99,17 @@ class MyStrategy(bt.Strategy):
 
     def buy_condition(self):
         conditions = [
-            self.data0.close[0] < (self.donchian.lines.dcl[0] + (self.donchian.lines.dcl[0] * self.params.order_factor))
+            self.data0.close[0] < self.donchian.lines.dcl[0] + (self.donchian.lines.dcl[0] * self.params.order_factor)
         ]
         if all(conditions):
             return True
 
-    # def sell_condition(self):
-    #     conditions = [
-    #         self.data0.close[0] > self.donchian.lines.dch[0] * (1 - self.params.order_factor)
-    #     ]
-    #     if all(conditions):
-    #         return True
+    def sell_condition(self):
+        conditions = [
+            self.data0.close[0] > self.donchian.lines.dch[0] - (self.donchian.lines.dch[0] * self.params.order_factor)
+        ]
+        if all(conditions):
+            return True
 
     def define_trend(self):
         minimum_distance = max([self.ichimoku1.lines.senkou_span_a[0], self.ichimoku1.lines.senkou_span_b[0]]) * self.params.ichimoku_trend_factor
@@ -119,41 +127,90 @@ class MyStrategy(bt.Strategy):
             self.uptrend, self.downtrend, self.notrend = False, False, True
 
     def buy_logic(self):
-        # Check that no position is opened
-        if self.position.size == 0:
+        # Ensure no position is opened and no active buy orders exist
+        if self.position.size == 0 and not self.order:
             if self.uptrend:
                 if self.buy_condition():
-                    self.stop_price = self.donchian.lines.dcl[0] * (1 - self.params.stop_distance_factor)
-                    self.take_profit_price = self.donchian.lines.dch[0] * (1 + self.params.take_profit_distance_factor)
-                    self.order = self.buy()
-                    return True
+                    # Calculate stop-loss and take-profit based on Donchian channels
+                    stop_price = self.donchian.lines.dcl[0] * (1 - self.params.stop_distance_factor)
+                    take_profit_price = self.donchian.lines.dch[0] * (1 + self.params.take_profit_distance_factor)
+
+                    # Validate stop and take-profit prices (ensure they make sense)
+                    if stop_price > 0 and take_profit_price > 0:
+                        self.stop_price = stop_price
+                        self.take_profit_price = take_profit_price
+                        self.order = self.buy()  # Place the buy order
+                        self.log('Long placed')
+                        return True
+        return False
+
     def sell_logic(self):
-        if self.position.size == 0:
+        # Ensure no position is opened and no active sell orders exist
+        if self.position.size == 0 and not self.order:
             if self.downtrend:
                 if self.sell_condition():
-                    self.stop_price = self.donchian.lines.dch[0] * (1 + self.params.stop_distance_factor)
-                    self.take_profit_price = self.donchian.lines.dcl[0] * (1 - self.params.take_profit_distance_factor)
-                    self.order = self.sell()
-                    return True
+                    # Calculate stop-loss and take-profit based on Donchian channels
+                    stop_price = self.donchian.lines.dch[0] * (1 + self.params.stop_distance_factor)
+                    take_profit_price = self.donchian.lines.dcl[0] * (1 - self.params.take_profit_distance_factor)
+
+                    # Validate stop and take-profit prices (ensure they make sense)
+                    if stop_price > 0 and take_profit_price > 0:
+                        self.stop_price = stop_price
+                        self.take_profit_price = take_profit_price
+                        self.order = self.sell()  # Place the sell order
+                        self.log('Short placed')
+                        return True
+        return False
 
     def stop_loss_logic(self):
+        # Long position stop loss logic
         if self.position.size > 0:
+            # Close long position if price falls below or equal to the stop price
             if self.data0.close[0] <= self.stop_price:
                 self.close()
                 return True
 
-    def take_profit_logic_long(self):
+        # Short position stop loss logic
+        elif self.position.size < 0:
+            # Close short position if price rises above or equal to the stop price
+            if self.data0.close[0] >= self.stop_price:
+                self.close()
+                return True
+
+        return False
+
+    def take_profit_logic(self):
+        # Long position logic
         if self.position.size > 0:
             if self.take_profit_price:
+                # Adjust trailing stop if price moves above the take profit trigger factor
                 if self.data0.close[0] >= self.take_profit_price * (1 - self.params.take_profit_trigger_factor):
                     self.take_profit_price = self.data0.close[0]
-                    self.trailing_profit_price = self.take_profit_price - (self.take_profit_price * self.params.take_profit_distance_factor)
+                    self.trailing_profit_price = self.take_profit_price - (
+                                self.take_profit_price * self.params.take_profit_distance_factor)
             if self.trailing_profit_price:
+                # Close position if price falls below trailing stop
                 if self.data0.close[0] <= self.trailing_profit_price:
                     self.close()
                     self.trailing_profit_price = None
                     self.take_profit_price = None
                     return True
+        # Short position logic
+        elif self.position.size < 0:
+            if self.take_profit_price:
+                # Adjust trailing stop if price moves below the take profit trigger factor
+                if self.data0.close[0] <= self.take_profit_price * (1 + self.params.take_profit_trigger_factor):
+                    self.take_profit_price = self.data0.close[0]
+                    self.trailing_profit_price = self.take_profit_price + (
+                                self.take_profit_price * self.params.take_profit_distance_factor)
+            if self.trailing_profit_price:
+                # Close position if price rises above trailing stop
+                if self.data0.close[0] >= self.trailing_profit_price:
+                    self.close()
+                    self.trailing_profit_price = None
+                    self.take_profit_price = None
+                    return True
+        return False
 
     def next(self):
         '''Runs for every candlestick. Checks conditions to enter and exit trades.'''
@@ -164,13 +221,14 @@ class MyStrategy(bt.Strategy):
         self.define_trend()
         # BUY
         self.buy_logic()
+        self.sell_logic()
 
         # STOP LOSS
         if self.stop_loss_logic():
             return
 
         # TAKE PROFIT
-        self.take_profit_logic_long()
+        self.take_profit_logic()
 
 
         # Close the last trade to not influence final results with an open trade

@@ -160,13 +160,25 @@ class CommissionAnalyzer(Analyzer):
                 'commissions': self.commissions}
 
 class FixedRiskSizer(Sizer):
- def _getsizing(self, comminfo, cash, data, isbuy):
+    def _getsizing(self, comminfo, cash, data, isbuy):
+        capital_at_risk = self.broker.getvalue() * self.strategy.risk_per_trade  # Assuming risk_per_trade is set in strategy
         if isbuy:
+            # For long positions, the stop loss distance is calculated as the difference between current price and stop price
             stop_loss_distance = data.close[0] - self.strategy.stop_price  # Assuming stop_price is set in strategy
-            capital_at_risk = self.broker.getvalue() * self.strategy.risk_per_trade  # Assuming risk_per_trade is set in strategy
-            position_size = capital_at_risk / stop_loss_distance
-            return position_size  # Return position size as an integer
-        return 0  # If it's not a buy order, return 0
+            if stop_loss_distance <= 0:
+                return 0  # No valid trade if stop loss is above current price
+        else:
+            # For short positions, the stop loss distance is reversed, stop loss is above current price
+            stop_loss_distance = self.strategy.stop_price - data.close[0]  # Assuming stop_price is set in strategy
+            if stop_loss_distance <= 0:
+                return 0  # No valid trade if stop loss is below current price
+
+        position_size = capital_at_risk / stop_loss_distance
+        if position_size > self.broker.getvalue():
+            position_size = self.broker.getvalue() / data.close[0]
+
+        # Ensure position size is an integer, which is required for most brokers
+        return math.floor(position_size)
 
 def parse_args():
     parser = argparse.ArgumentParser(
