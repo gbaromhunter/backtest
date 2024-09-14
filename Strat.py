@@ -9,12 +9,14 @@ class MyStrategy(bt.Strategy):
     params = (
         ('total_candles', 0),
 
-        ('Donchian_Period', 20),
+        ('Donchian_Period', 40),
         ('Donchian_Lookback', -1),
 
-        ('order_factor', 0.05),
+        ('order_factor', 0.005),
+        ('ichimoku_trend_factor', 0.01),
 
-        ('stop_distance_factor', 0.01),
+        ('risk_per_trade', 0.003),
+        ('stop_distance_factor', 0.005),
         ('take_profit_distance_factor', 0.01),
         ('take_profit_trigger_factor', 0.4),
     )
@@ -28,15 +30,17 @@ class MyStrategy(bt.Strategy):
         self.take_profit_price = None
         self.trailing_profit_price = None
         self.last_value = None
+        self.risk_per_trade = self.params.risk_per_trade
 
         self.total_candles = self.params.total_candles
 
         # Set the indicators
 
         # Set the indicators for the secondary timeframe
-        self.donchian = DonchianChannels(self.data1)
-        self.ichimoku = bt.indicators.Ichimoku(self.data1)
-        self.ichimoku1 = bt.indicators.Ichimoku(self.data2)
+        self.donchian = DonchianChannels(self.data1, plot=False)
+        self.donchian1 = DonchianChannels(self.data2, plot=False)
+        self.ichimoku = bt.indicators.Ichimoku(self.data1, plot=False)
+        self.ichimoku1 = bt.indicators.Ichimoku(self.data2, plot=False)
 
         # Set Flags, Checks, Conditions
         self.uptrend = False
@@ -87,27 +91,28 @@ class MyStrategy(bt.Strategy):
 
     def buy_condition(self):
         conditions = [
-            self.data0.close[0] < self.donchian.lines.dcl[0] * (1 + self.params.order_factor)
+            self.data0.close[0] < (self.donchian.lines.dcl[0] + (self.donchian.lines.dcl[0] * self.params.order_factor))
         ]
         if all(conditions):
             return True
 
-    def sell_condition(self):
-        conditions = [
-            self.data0.close[0] > self.donchian.lines.dch[0] * (1 - self.params.order_factor)
-        ]
-        if all(conditions):
-            return True
+    # def sell_condition(self):
+    #     conditions = [
+    #         self.data0.close[0] > self.donchian.lines.dch[0] * (1 - self.params.order_factor)
+    #     ]
+    #     if all(conditions):
+    #         return True
 
     def define_trend(self):
+        minimum_distance = max([self.ichimoku1.lines.senkou_span_a[0], self.ichimoku1.lines.senkou_span_b[0]]) * self.params.ichimoku_trend_factor
         if all([
-                self.data0.close[0] > self.ichimoku1.lines.senkou_span_a[0],
-                self.data0.close[0] > self.ichimoku1.lines.senkou_span_b[0],
+                self.data0.close[0] > self.ichimoku1.lines.senkou_span_a[0] + minimum_distance,
+                self.data0.close[0] > self.ichimoku1.lines.senkou_span_b[0] + minimum_distance,
                 ]):
             self.uptrend, self.downtrend, self.notrend = True, False, False
         elif all([
-                  self.data0.close[0] < self.ichimoku1.lines.senkou_span_a[0],
-                  self.data0.close[0] < self.ichimoku1.lines.senkou_span_b[0],
+                  self.data0.close[0] < self.ichimoku1.lines.senkou_span_a[0] - minimum_distance,
+                  self.data0.close[0] < self.ichimoku1.lines.senkou_span_b[0] - minimum_distance,
                  ]):
             self.uptrend, self.downtrend, self.notrend = False, True, False
         else:
@@ -142,7 +147,7 @@ class MyStrategy(bt.Strategy):
             if self.take_profit_price:
                 if self.data0.close[0] >= self.take_profit_price * (1 - self.params.take_profit_trigger_factor):
                     self.take_profit_price = self.data0.close[0]
-                    self.trailing_profit_price = self.take_profit_price * (1 - self.params.take_profit_distance_factor)
+                    self.trailing_profit_price = self.take_profit_price - (self.take_profit_price * self.params.take_profit_distance_factor)
             if self.trailing_profit_price:
                 if self.data0.close[0] <= self.trailing_profit_price:
                     self.close()

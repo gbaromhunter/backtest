@@ -160,14 +160,10 @@ class CommissionAnalyzer(Analyzer):
                 'commissions': self.commissions}
 
 class FixedRiskSizer(Sizer):
-    params = (
-        ('risk_per_trade', 0.01),  # 1% of capital at risk per trade
-    )
-
-    def _getsizing(self, comminfo, cash, data, isbuy):
+ def _getsizing(self, comminfo, cash, data, isbuy):
         if isbuy:
             stop_loss_distance = data.close[0] - self.strategy.stop_price  # Assuming stop_price is set in strategy
-            capital_at_risk = self.broker.getvalue() * self.params.risk_per_trade  # Capital at risk for this trade
+            capital_at_risk = self.broker.getvalue() * self.strategy.risk_per_trade  # Assuming risk_per_trade is set in strategy
             position_size = capital_at_risk / stop_loss_distance
             return position_size  # Return position size as an integer
         return 0  # If it's not a buy order, return 0
@@ -198,7 +194,9 @@ def load_data(file_name):
     data = pd.read_csv(file_name, index_col='Date', parse_dates=True)
     data = bt.feeds.PandasData(
         dataname=data,
-        datetime=None,  # Backtrader will use the index as datetime
+        datetime=None, # Backtrader will use the index as datetime
+        timeframe=bt.TimeFrame.Minutes,
+        compression=1,
         open=0,
         high=1,
         low=2,

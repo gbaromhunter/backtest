@@ -5,17 +5,18 @@ import quantstats
 import warnings
 import time
 warnings.simplefilter(action='ignore', category=FutureWarning)
+from support import parse_args
 # from test import TestStrategy
 
 
 # Create the Data object
 
 data, total_candles = define_data_alphavantage(ticker='AMZN',
-                                start_year=2024,
-                                start_month=1,
-                                months=4,
-                                interval='1min',
-                                )
+                                               start_year=2023,
+                                               start_month=5,
+                                               months=15,
+                                               interval='1min',
+                                               )
 
 # data = define_data_ib(ticker="AMZN",
 #                    )
@@ -65,8 +66,6 @@ def runstrat():
     print(f'Starting Portfolio Value: {cerebro.broker.getvalue():.2f}')
 
     # Run the backtest
-    if args.plot:
-        cerebro.plot(style='bar')
 
     results = cerebro.run(runonce=False)
     strat = results[0]
@@ -97,8 +96,10 @@ def runstrat():
     ret.index = ret.index.tz_convert(None)
     quantstats.reports.html(ret, output='stats.html', title='Backtest results')
 
-
     print_end(returns, trade_analyzer, starting_cash, commission_analysis)
+
+    if args.plot:
+        cerebro.plot()
 
 
 if __name__ == '__main__':
