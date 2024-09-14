@@ -12,10 +12,11 @@ class MyStrategy(bt.Strategy):
         ('Donchian_Period', 20),
         ('Donchian_Lookback', -1),
 
-        ('order_factor', 0.02),
+        ('order_factor', 0.05),
 
         ('stop_distance_factor', 0.01),
-        ('take_profit_distance_factor', 0),
+        ('take_profit_distance_factor', 0.01),
+        ('take_profit_trigger_factor', 0.4),
     )
 
     def __init__(self):
@@ -136,12 +137,12 @@ class MyStrategy(bt.Strategy):
                 self.close()
                 return True
 
-    def take_profit_logic(self):
+    def take_profit_logic_long(self):
         if self.position.size > 0:
             if self.take_profit_price:
-                if self.data0.close[0] >= self.take_profit_price:
+                if self.data0.close[0] >= self.take_profit_price * (1 - self.params.take_profit_trigger_factor):
                     self.take_profit_price = self.data0.close[0]
-                    self.trailing_profit_price = self.take_profit_price * (1 + self.params.take_profit_distance_factor)
+                    self.trailing_profit_price = self.take_profit_price * (1 - self.params.take_profit_distance_factor)
             if self.trailing_profit_price:
                 if self.data0.close[0] <= self.trailing_profit_price:
                     self.close()
@@ -158,14 +159,13 @@ class MyStrategy(bt.Strategy):
         self.define_trend()
         # BUY
         self.buy_logic()
-        self.sell_logic()
 
         # STOP LOSS
         if self.stop_loss_logic():
             return
 
         # TAKE PROFIT
-        self.take_profit_logic()
+        self.take_profit_logic_long()
 
 
         # Close the last trade to not influence final results with an open trade
