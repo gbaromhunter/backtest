@@ -1,106 +1,140 @@
-from support import *
+import random
+from deap import base, creator, tools, algorithms
 import backtrader as bt
 from Strat import MyStrategy
+from support import define_data_alphavantage, FixedRiskSizer, CommissionAnalyzer
 import quantstats
-import warnings
-import time
-warnings.simplefilter(action='ignore', category=FutureWarning)
-from support import parse_args
-# from test import TestStrategy
+import os
+
+# Define the fitness function: maximize returns and minimize drawdown
+creator.create("FitnessMulti", base.Fitness, weights=(1.0, -1.0))  # Maximize returns, minimize drawdown
+creator.create("Individual", list, fitness=creator.FitnessMulti)
+
+starting_capital = 10000
+commission = 0.00035
+
+toolbox = base.Toolbox()
+
+# Define ranges for each parameter
+toolbox.register("attr_Donchian_Period", random.randint, 20, 50)
+toolbox.register("attr_order_factor", random.uniform, 0.01, 0.05)
+toolbox.register("attr_ichimoku_trend_factor", random.uniform, 0.01, 0.05)
+toolbox.register("attr_risk_per_trade", random.uniform, 0.001, 0.01)
+toolbox.register("attr_stop_distance_factor", random.uniform, 0.01, 0.05)
+toolbox.register("attr_take_profit_distance_factor", random.uniform, 0.01, 0.05)
+toolbox.register("attr_take_profit_trigger_factor", random.uniform, 0.2, 0.7)
+
+toolbox.register("individual", tools.initCycle, creator.Individual,
+                 (toolbox.attr_Donchian_Period, toolbox.attr_order_factor, toolbox.attr_ichimoku_trend_factor,
+                  toolbox.attr_risk_per_trade, toolbox.attr_stop_distance_factor,
+                  toolbox.attr_take_profit_distance_factor, toolbox.attr_take_profit_trigger_factor), n=1)
+
+toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
 
-# Create the Data object
-
-data, total_candles = define_data_alphavantage(ticker='AMZN',
-                                               start_year=2023,
-                                               start_month=5,
-                                               months=15,
-                                               interval='1min',
-                                               )
-
-# data = define_data_ib(ticker="AMZN",
-#                    )
-
-# data = define_data_yahoo("AMZN",
-#                    "2024-01-01",
-#                    "2024-08-31",
-#                    )
-
-
-def runstrat():
-    start_time = time.time()
-    args = parse_args()
-    # Instantiate parameters
+# Fitness function
+def evaluate(individual):
     cerebro = bt.Cerebro()
-    # Specify the strategy
-    cerebro.addstrategy(MyStrategy, total_candles=total_candles)
-
-    # Add the data
+    data, _ = define_data_alphavantage('AMZN', start_year=2023, start_month=5, months=15, interval='1min')
     cerebro.adddata(data)
-    # Resample the first smaller timeframe into a bigger timeframe
     cerebro.resampledata(data, timeframe=bt.TimeFrame.Minutes, compression=15)
     cerebro.resampledata(data, timeframe=bt.TimeFrame.Minutes, compression=60)
 
-    # Set the initial cash amount and the commission costs
-    starting_cash = 10000
-    cerebro.broker.setcash(starting_cash)
-    cerebro.broker.setcommission(commission=0.00035)
+    cerebro.addstrategy(MyStrategy,
+                        Donchian_Period=individual[0],
+                        order_factor=individual[1],
+                        ichimoku_trend_factor=individual[2],
+                        risk_per_trade=individual[3],
+                        stop_distance_factor=individual[4],
+                        take_profit_distance_factor=individual[5],
+                        take_profit_trigger_factor=individual[6])
 
-    # Add Analyzers
-    cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe')
+    cerebro.broker.setcash(starting_capital)
+    cerebro.broker.setcommission(commission=commission)
+    cerebro.addsizer(FixedRiskSizer)
+    cerebro.addanalyzer(CommissionAnalyzer)
     cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
-    cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='trade_analyzer')
     cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
 
-    # Add Custom Analyzers
-    cerebro.addanalyzer(SortinoRatio, _name='sortino')
-    cerebro.addanalyzer(CommissionAnalyzer, _name='commissions')
-    cerebro.addsizer(FixedRiskSizer)
-    cerebro.addanalyzer(bt.analyzers.PyFolio, _name='PyFolio')
+    result = cerebro.run()
 
-    # Add Observers (e.g., log cash value, portfolio value)
-    cerebro.addobserver(bt.observers.Value)
-    cerebro.addobserver(bt.observers.Trades)
+    # Get results from analyzers
+    drawdown = result[0].analyzers.drawdown.get_analysis().max.drawdown
+    returns = result[0].broker.getvalue() - starting_capital
 
-    # Print starting cash
-    print(f'Starting Portfolio Value: {cerebro.broker.getvalue():.2f}')
+    # Print parameters and results
+    print("\nEvaluation Result:")
+    print(f"Parameters:")
+    print(f"  Donchian_Period: {individual[0]}")
+    print(f"  Order Factor: {individual[1]}")
+    print(f"  Ichimoku Trend Factor: {individual[2]}")
+    print(f"  Risk per Trade: {individual[3]}")
+    print(f"  Stop Distance Factor: {individual[4]}")
+    print(f"  Take Profit Distance Factor: {individual[5]}")
+    print(f"  Take Profit Trigger Factor: {individual[6]}")
+    print(f"Returns: ${returns:.2f}")
+    print(f"Drawdown: {drawdown:.2f}%\n")
 
-    # Run the backtest
+    # Return as a tuple (returns, -drawdown) since DEAP minimizes the fitness function
+    return (returns, -drawdown)
 
-    results = cerebro.run(runonce=False)
-    strat = results[0]
 
-    # Record the end time
-    end_time = time.time()
+toolbox.register("evaluate", evaluate)
+toolbox.register("mate", tools.cxBlend, alpha=0.5)
+toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=1, indpb=0.2)
+toolbox.register("select", tools.selTournament, tournsize=3)
 
-    # Calculate the elapsed time
-    elapsed_time = end_time - start_time
 
-    # Convert elapsed time to minutes and seconds
-    minutes, seconds = divmod(elapsed_time, 60)
+def main():
+    pop = toolbox.population(n=10)  # Population size
+    hof = tools.HallOfFame(1)  # Hall of Fame to keep track of best individual
 
-    # Print the elapsed time
-    print(f"Backtest completed in {int(minutes)} minutes and {int(seconds)} seconds")
+    # Evolve the population
+    algorithms.eaSimple(pop, toolbox, cxpb=0.7, mutpb=0.3, ngen=10, halloffame=hof, verbose=True)
 
-    # Print ending cash
-    print(f'\nEnding Portfolio Value: {cerebro.broker.getvalue():.2f}')
+    # Best individual found
+    print(f"Best individual: {hof[0]}")
 
-    # Access and print metrics from analyzers
-    returns = results[0].analyzers.returns.get_analysis()
-    trade_analyzer = results[0].analyzers.trade_analyzer.get_analysis()
+    # Optionally, save best parameters to a file or use them for further analysis
+    with open('best_parameters.txt', 'w') as f:
+        f.write(f"Best individual: {hof[0]}\n")
 
-    # Access and print metrics from custom analyzers
-    commission_analysis = results[0].analyzers.commissions.get_analysis()
-    portfolio_stats = strat.analyzers.getbyname('PyFolio')
+    # Generate and save QuantStats report for the best result
+    best_params = hof[0]
+    cerebro = bt.Cerebro()
+    data, _ = define_data_alphavantage('AMZN', start_year=2023, start_month=5, months=15, interval='1min')
+    cerebro.adddata(data)
+    cerebro.resampledata(data, timeframe=bt.TimeFrame.Minutes, compression=15)
+    cerebro.resampledata(data, timeframe=bt.TimeFrame.Minutes, compression=60)
+
+    cerebro.addstrategy(MyStrategy,
+                        Donchian_Period=best_params[0],
+                        order_factor=best_params[1],
+                        ichimoku_trend_factor=best_params[2],
+                        risk_per_trade=best_params[3],
+                        stop_distance_factor=best_params[4],
+                        take_profit_distance_factor=best_params[5],
+                        take_profit_trigger_factor=best_params[6])
+
+    cerebro.broker.setcash(starting_capital)
+    cerebro.broker.setcommission(commission=commission)
+    cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
+    cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
+
+    result = cerebro.run()
+
+    portfolio_stats = result[0].analyzers.getbyname('returns')
     ret, positions, transactions, gross_lev = portfolio_stats.get_pf_items()
     ret.index = ret.index.tz_convert(None)
-    quantstats.reports.html(ret, output='stats.html', title='Backtest results')
 
-    print_end(returns, trade_analyzer, starting_cash, commission_analysis)
+    report_dir = 'quantstats_reports'
+    if not os.path.exists(report_dir):
+        os.makedirs(report_dir)
 
-    if args.plot:
-        cerebro.plot()
+    report_filename = os.path.join(report_dir, "quantstats_best_report.html")
+    quantstats.reports.html(ret, output=report_filename, title='Backtest results')
+    print(f"QuantStats report saved: {report_filename}")
 
 
-if __name__ == '__main__':
-    runstrat()
+if __name__ == "__main__":
+    main()
