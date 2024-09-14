@@ -13,11 +13,12 @@ from datetime import datetime
 from ib_insync import *
 import requests
 from io import StringIO
+import csv
 
 
 
 class DonchianChannels(Indicator):
-    '''
+    """
     Params Note:
       - `lookback` (default: -1)
         If `-1`, the bars to consider will start 1 bar in the past and the
@@ -25,7 +26,7 @@ class DonchianChannels(Indicator):
         If `0`, the current prices will be considered for the Donchian
         Channel. This means that the price will **NEVER** break through the
         upper/lower channel bands.
-    '''
+    """
 
     alias = ('DCH', 'DonchianChannel',)
 
@@ -77,6 +78,7 @@ class SortinoRatio(Analyzer):
     }
 
     def __init__(self):
+        self.ratio = None
         if self.p.legacyannual:
             self.anret = AnnualReturn()
         else:
@@ -193,7 +195,7 @@ def parse_args():
                         help='Couple all lines of the indicator')
 
     parser.add_argument('--plot', required=False, action='store_true',
-                        help=('Plot the result'))
+                        help='Plot the result')
 
     return parser.parse_args()
 
@@ -237,7 +239,7 @@ def fetch_data_from_yahoo(ticker, start_date, end_date, file_name):
 def define_data_yahoo(ticker, start_date, end_date):
     ticker = ticker  # Stock ticker
     start_date = start_date  # Start date for fetching data
-    end_date = datetime.today().strftime('%Y-%m-%d') if end_date == None else end_date  # Today's date as the end date
+    end_date = datetime.today().strftime('%Y-%m-%d') if end_date is None else end_date  # Today's date as the end date
     file_name = f"{ticker}_data.csv"  # File name for saving the data
 
     # Convert pandas dataframe to Backtrader data feed
@@ -252,7 +254,7 @@ def define_data_yahoo(ticker, start_date, end_date):
 
     return data
 
-def fetch_data_from_IB(ticker, file_name): # Broken
+def fetch_data_from_ib(ticker, file_name): # Broken
     util.startLoop()
 
     ib = IB()
@@ -324,7 +326,7 @@ def define_data_ib(ticker):
     # Check if CSV exists, otherwise download the data
     if not os.path.exists(file_name):
         print(f"CSV file not found. Downloading data for {ticker} from IBKR...")
-        data = fetch_data_from_IB(ticker, file_name)
+        data = fetch_data_from_ib(ticker, file_name)
     else:
         print(f"CSV file found. Loading data from {file_name}...")
         data = load_data(file_name)
@@ -398,25 +400,4 @@ def fetch_intraday_data_from_alphavantage(ticker, start_year, start_month, month
         print(f"Data successfully saved to {output_file}")
     else:
         print("No data was retrieved.")
-
-def print_end(returns, trade_analyzer, starting_cash, commission_analysis):
-    # Print metrics
-    print(f"Total Return: {returns['rtot'] * 100:.2f}%")
-
-    # Accessing trade details
-    print('\n--- Trade Analyzer Detailed Results ---')
-    print(f"Total Trades: {trade_analyzer.total.total}")
-
-
-    if trade_analyzer.total.total != 0:
-        print(f"Total Won: {trade_analyzer.won.total} / Total Lost: {trade_analyzer.lost.total}")
-        print(f"Net Profit: {trade_analyzer.pnl.net.total:.2f} / Net Profit Percentage: {(trade_analyzer.pnl.net.total / starting_cash * 100):.2f}%")
-        print(f"Win Rate: {trade_analyzer.won.total / trade_analyzer.total.total * 100:.2f}%")
-        print(f"Max Win Amount: {trade_analyzer.won.pnl.max:.2f} / Average Win Amount: {trade_analyzer.won.pnl.average:.2f}")
-        print(f"Max Loss Amount: {trade_analyzer.lost.pnl.max:.2f} / Average Loss Amount: {trade_analyzer.lost.pnl.average:.2f}")
-        print(f"Average Trade Duration Bars: {trade_analyzer.len.average:.2f} - {trade_analyzer.len.average / 60:.2f} Hours - {trade_analyzer.len.average / 3600:.2f} Days")
-        print(f"Total Commission Costs: {commission_analysis['total_commission']:.2f}")
-    else:
-        print("No trade executed")
-
 

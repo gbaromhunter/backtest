@@ -1,0 +1,21 @@
+Parameter,Value
+Donchian_Period,50
+order_factor,0.02614274800324143
+ichimoku_trend_factor,0.030797845450592373
+risk_per_trade,0.00572756889748803
+stop_distance_factor,0.02304642140280346
+take_profit_distance_factor,0.02968627477818312
+take_profit_trigger_factor,0.2041873732166115
+Metric,Value
+Total Trades,2
+Won Trades,2
+Lost Trades,0
+Net Profit,138.90770830000002
+Net Profit Percentage,1.39%
+Drawdown,-1.4366026714798783
+Win Rate,100.00%
+Max Win Amount,137.65448930000002
+Average Win Amount,69.45385415000001
+Max Loss Amount,0
+Average Loss Amount,0
+Average Trade Duration (Bars),7046.0
