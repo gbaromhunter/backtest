@@ -175,13 +175,15 @@ def main():
         writer.writerow(['Lost Trades', lost_trades])
         writer.writerow(['Net Profit', net_profit])
         writer.writerow(['Net Profit Percentage', f"{(net_profit / starting_capital * 100):.2f}%"])
-        writer.writerow(['Drawdown', -drawdown])
+        writer.writerow(['Drawdown', f"{(-drawdown)}%"])
         writer.writerow(['Win Rate', f"{win_rate:.2f}%"])
         writer.writerow(['Max Win Amount', max_win])
         writer.writerow(['Average Win Amount', avg_win])
         writer.writerow(['Max Loss Amount', max_loss])
         writer.writerow(['Average Loss Amount', avg_loss])
-        writer.writerow(['Average Trade Duration (Bars)', avg_duration])
+        writer.writerow(['Average Trade Duration (Minutes)', avg_duration])
+        writer.writerow(['Average Trade Duration (Hours)', avg_duration / 60])
+        writer.writerow(['Average Trade Duration (Days)', avg_duration / 3600])
 
     quantstats.reports.html(ret, output='stats.html', title='Backtest results')
 
