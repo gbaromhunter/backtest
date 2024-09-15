@@ -1,17 +1,25 @@
-import sys, time, warnings, random, csv
-from deap import base, creator, tools, algorithms
-from Strat import MyStrategy
+import csv
+import multiprocessing
+import random
+import sys
+import time
+import warnings
+
 import backtrader as bt
+import quantstats
+from deap import base, creator, tools, algorithms
+
+from Strat import MyStrategy
 from support import FixedRiskSizer, CommissionAnalyzer, define_data_alphavantage, load_cache_db, update_cache_db, \
     setup_database
-import quantstats
-import multiprocessing
+
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 setup_database()
 
 data, total_candles = define_data_alphavantage('AMZN', start_year=2023, start_month=5, months=15, interval='1min')
 param_cache = load_cache_db()
+
 
 def create_data():
     cerebro = bt.Cerebro()
@@ -29,6 +37,7 @@ def create_data():
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='trade_analyzer')
 
     return cerebro
+
 
 # Fitness function
 def evaluate(individual):
@@ -116,6 +125,7 @@ toolbox.register("mate", tools.cxBlend, alpha=0.5)
 toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=0.1, indpb=0.2)
 toolbox.register("select", tools.selNSGA2)  # Multi-objective selection
 
+
 def main():
     pop = toolbox.population(n_population)  # Population size
     hof = tools.HallOfFame(1)  # Hall of Fame to keep track of best individual
@@ -147,7 +157,6 @@ def main():
     ret, positions, transactions, gross_lev = portfolio_stats.get_pf_items()
     ret.index = ret.index.tz_convert(None)
 
-
     total_trades = trade_analyzer.total.total or 0
     won_trades = trade_analyzer.won.total or 0
     lost_trades = trade_analyzer.lost.total or 0
@@ -166,7 +175,8 @@ def main():
     print(f"Win Rate: {win_rate:.2f}%")
     print(f"Max Win Amount: {max_win:.2f} / Average Win Amount: {avg_win:.2f}")
     print(f"Max Loss Amount: {max_loss:.2f} / Average Loss Amount: {avg_loss:.2f}")
-    print(f"Average Trade Duration Bars: {avg_duration:.2f} - {avg_duration / 60:.2f} Hours - {avg_duration / 3600:.2f} Days")
+    print(
+        f"Average Trade Duration Bars: {avg_duration:.2f} - {avg_duration / 60:.2f} Hours - {avg_duration / 3600:.2f} Days")
 
     # Save metrics to CSV
     with open('best_metrics.csv', mode='w', newline='') as file:
@@ -195,10 +205,8 @@ def main():
         writer.writerow(['Average Trade Duration (Days)', avg_duration / 3600])
 
     quantstats.reports.html(ret, output='stats.html', title='Backtest results')
-
-    pool.close()
-    pool.join()
     # cerebro.plot()
+
 
 if __name__ == "__main__":
     if sys.platform.startswith("win"):
@@ -213,7 +221,6 @@ if __name__ == "__main__":
 
     pool.close()
     pool.join()
-
 
     end_time = time.time()  # End time after process finishes
     total_runs = n_population * n_gen  # Calculate total runs based on population and generations
