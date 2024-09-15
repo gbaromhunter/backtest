@@ -2,15 +2,16 @@ import sys, time, warnings, random, csv
 from deap import base, creator, tools, algorithms
 from Strat import MyStrategy
 import backtrader as bt
-from support import FixedRiskSizer, CommissionAnalyzer, define_data_alphavantage, load_cache, write_cache
+from support import FixedRiskSizer, CommissionAnalyzer, define_data_alphavantage, load_cache_db, update_cache_db, \
+    setup_database
 import quantstats
 import multiprocessing
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
+setup_database()
 
 data, total_candles = define_data_alphavantage('AMZN', start_year=2023, start_month=5, months=15, interval='1min')
-param_cache = load_cache()
-bulk_cache_updates = []
+param_cache = load_cache_db()
 
 def create_data():
     cerebro = bt.Cerebro()
@@ -79,8 +80,7 @@ def evaluate(individual):
 
     # Cache the new result
     param_cache[params] = (returns, -drawdown)  # Cache in memory
-    bulk_cache_updates.append((list(params) + [returns, -drawdown]))  # Prepare for bulk writing
-
+    update_cache_db(params, (returns, -drawdown))
     # Return as a tuple since DEAP minimizes the fitness function
     return returns, -drawdown
 
@@ -196,8 +196,6 @@ def main():
 
     quantstats.reports.html(ret, output='stats.html', title='Backtest results')
 
-    write_cache(bulk_cache_updates)
-
     pool.close()
     pool.join()
     # cerebro.plot()
@@ -215,6 +213,7 @@ if __name__ == "__main__":
 
     pool.close()
     pool.join()
+
 
     end_time = time.time()  # End time after process finishes
     total_runs = n_population * n_gen  # Calculate total runs based on population and generations

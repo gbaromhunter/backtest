@@ -5,16 +5,11 @@ from backtrader.mathsupport import average, standarddev
 from backtrader.analyzers import TimeReturn, AnnualReturn
 import backtrader as bt
 import argparse
-# from atreyu_backtrader_api import IBData
 import os
 import pandas as pd
-import yfinance as yf
-from datetime import datetime
-from ib_insync import *
 import requests
 from io import StringIO
-import csv
-
+import sqlite3
 
 
 class DonchianChannels(Indicator):
@@ -219,119 +214,6 @@ def load_data(file_name):
     )
     return data
 
-def fetch_data_from_yahoo(ticker, start_date, end_date, file_name):
-    """Download data from Yahoo Finance and save it as a CSV."""
-    data = yf.download(ticker, start=start_date, end=end_date)
-    data = data.drop(columns=['Adj Close'])
-    data.index.name = 'Date'  # Ensure the index is named 'Date'
-    data.to_csv(file_name)
-    data = bt.feeds.PandasData(
-        dataname=data,
-        datetime=None,  # Backtrader will use the index as datetime
-        open=0,
-        high=1,
-        low=2,
-        close=3,
-        volume=4
-    )
-    return data
-
-def define_data_yahoo(ticker, start_date, end_date):
-    ticker = ticker  # Stock ticker
-    start_date = start_date  # Start date for fetching data
-    end_date = datetime.today().strftime('%Y-%m-%d') if end_date is None else end_date  # Today's date as the end date
-    file_name = f"{ticker}_data.csv"  # File name for saving the data
-
-    # Convert pandas dataframe to Backtrader data feed
-
-    # Check if CSV exists, otherwise download the data
-    if not os.path.exists(file_name):
-        print(f"CSV file not found. Downloading data for {ticker} from Yahoo Finance...")
-        data = fetch_data_from_yahoo(ticker, start_date, end_date, file_name)
-    else:
-        print(f"CSV file found. Loading data from {file_name}...")
-        data = load_data(file_name)
-
-    return data
-
-def fetch_data_from_ib(ticker, file_name): # Broken
-    util.startLoop()
-
-    ib = IB()
-    ib.connect('127.0.0.1', 7497, clientId=35)
-    contract = Stock(ticker=ticker, exchange='SMART', currency='USD')
-
-    data = ib.reqHistoricalData(
-        contract,
-        endDateTime='',
-        barSizeSetting='1 min',
-        durationStr='7 D',
-        whatToShow='TRADES',
-        useRTH=True,
-        formatDate=1,
-        keepUpToDate=True)
-
-    data = pd.DataFrame(data, columns=['Date', 'Open', 'High', 'Low', 'Close', 'Volume'])
-    data.to_csv(file_name)
-    data = bt.feeds.PandasData(
-        dataname=data,
-        datetime=None,  # Backtrader will use the index as datetime
-        open=0,
-        high=1,
-        low=2,
-        close=3,
-        volume=4
-    )
-    return data
-
-    # def fetch_data_from_IB(ticker, start_date, end_date, file_name, timeframe, compression):
-    # timeframes = {'minutes': bt.TimeFrame.Minutes,
-    #               'days': bt.TimeFrame.Days,
-    #               'weeks': bt.TimeFrame.Weeks,
-    #               'months': bt.TimeFrame.Months,}
-    # data = IBData(host='127.0.0.1', port=7497, clientId=35,
-    #                name="data",     # Data name
-    #                dataname=ticker, # Symbol name
-    #                secType='STK',   # SecurityType is STOCK
-    #                exchange='SMART',# Trading exchange IB's SMART exchange
-    #                currency='USD',  # Currency of SecurityType
-    #                fromdate=start_date,
-    #                todate=end_date,
-    #                what='TRADES',  # Update this parameter to select data type
-    #                timeframe=timeframes[timeframe],
-    #                compression=compression,  # The timeframe size
-    #                # latethrough=True,
-    #                )
-    # data = util.df(data)
-    #
-    # data = data.drop(columns=['Adj Close'])
-    # data.index.name = 'Date'  # Ensure the index is named 'Date'
-    # data.to_csv(file_name)
-    # data = bt.feeds.PandasData(
-    #     dataname=data,
-    #     datetime=None,  # Backtrader will use the index as datetime
-    #     open=0,
-    #     high=1,
-    #     low=2,
-    #     close=3,
-    #     volume=4
-    # )
-    # return data
-
-def define_data_ib(ticker):
-    file_name = f"{ticker}_data.csv"  # File name for saving the data
-
-    # Convert pandas dataframe to Backtrader data feed
-
-    # Check if CSV exists, otherwise download the data
-    if not os.path.exists(file_name):
-        print(f"CSV file not found. Downloading data for {ticker} from IBKR...")
-        data = fetch_data_from_ib(ticker, file_name)
-    else:
-        print(f"CSV file found. Loading data from {file_name}...")
-        data = load_data(file_name)
-
-    return data
 
 
 def define_data_alphavantage(ticker, start_year, start_month, months, interval):
@@ -401,24 +283,69 @@ def fetch_intraday_data_from_alphavantage(ticker, start_year, start_month, month
     else:
         print("No data was retrieved.")
 
-# Function to load cached results from CSV file into a dictionary
-def load_cache(csv_file='hyperopt_cache.csv'):
+
+# Database setup
+def setup_database(db_file='hyperopt_cache.db'):
+    conn = sqlite3.connect(db_file)
+    c = conn.cursor()
+
+    # Enable performance optimizations
+    c.execute('PRAGMA synchronous = OFF')  # Reduces disk writes, faster but less safe
+    c.execute('PRAGMA journal_mode = MEMORY')  # Faster in-memory journal
+    c.execute('PRAGMA temp_store = MEMORY')  # Keep temp tables in memory
+
+    # Create the table if it doesn't exist
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS cache (
+            param1 REAL,
+            param2 REAL,
+            param3 REAL,
+            param4 REAL,
+            param5 REAL,
+            param6 REAL,
+            param7 REAL,
+            returns REAL,
+            drawdown REAL,
+            PRIMARY KEY (param1, param2, param3, param4, param5, param6, param7)
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+
+# Load cache from the database
+def load_cache_db(db_file='hyperopt_cache.db'):
     cache = {}
-    if os.path.exists(csv_file):
-        with open(csv_file, mode='r') as file:
-            reader = csv.reader(file)
-            for row in reader:
-                params = tuple(map(float, row[:-2]))  # Convert parameter values to float
-                results = (float(row[-2]), float(row[-1]))  # Returns and drawdown
-                cache[params] = results
+    conn = sqlite3.connect(db_file)
+    c = conn.cursor()
+
+    # Check if table exists before trying to load
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cache'")
+    if not c.fetchone():
+        # If the table doesn't exist, return an empty cache
+        conn.close()
+        return cache
+
+    c.execute('SELECT * FROM cache')
+    for row in c.fetchall():
+        params = tuple(row[:-2])  # Parameters
+        results = (row[-2], row[-1])  # Returns and drawdown
+        cache[params] = results
+    conn.close()
     return cache
 
-def update_cache(new_entries, csv_file='hyperopt_cache.csv'):
-    with open(csv_file, mode='a', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerows(new_entries)  # Write all new entries at once
 
-def write_cache(bulk_cache_updates):
-    if bulk_cache_updates:
-        update_cache(bulk_cache_updates)
-        bulk_cache_updates.clear()  # Clear after writing to avoid duplication
+# Update the cache with new parameters and results
+def update_cache_db(params, results, db_file='hyperopt_cache.db'):
+    conn = sqlite3.connect(db_file)
+    c = conn.cursor()
+
+    # Insert or replace into cache
+    c.execute('''
+        INSERT OR REPLACE INTO cache 
+        (param1, param2, param3, param4, param5, param6, param7, returns, drawdown)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (*params, *results))
+
+    conn.commit()
+    conn.close()
