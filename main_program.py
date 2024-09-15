@@ -5,8 +5,10 @@ import warnings
 from Strat import MyStrategy
 from support import define_data_alphavantage, FixedRiskSizer, CommissionAnalyzer
 import quantstats
+import multiprocessing
 warnings.simplefilter(action='ignore', category=FutureWarning)
-
+import sys
+import time
 
 
 data, total_candles = define_data_alphavantage('AMZN', start_year=2023, start_month=5, months=15, interval='1min')
@@ -28,34 +30,6 @@ def create_data():
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='trade_analyzer')
 
     return cerebro
-
-starting_capital = 10000
-commission = 0.00035
-n_population = 2
-n_gen = 2
-
-# Define the fitness function: maximize returns and minimize drawdown
-creator.create("FitnessMulti", base.Fitness, weights=(1.0, -1.0))  # Maximize returns, minimize drawdown
-creator.create("Individual", list, fitness=creator.FitnessMulti)
-
-toolbox = base.Toolbox()
-
-# Define ranges for each parameter
-toolbox.register("attr_Donchian_Period", random.randint, 20, 50)
-toolbox.register("attr_order_factor", random.uniform, 0.01, 0.05)
-toolbox.register("attr_ichimoku_trend_factor", random.uniform, 0.01, 0.05)
-toolbox.register("attr_risk_per_trade", random.uniform, 0.001, 0.01)
-toolbox.register("attr_stop_distance_factor", random.uniform, 0.01, 0.05)
-toolbox.register("attr_take_profit_distance_factor", random.uniform, 0.01, 0.05)
-toolbox.register("attr_take_profit_trigger_factor", random.uniform, 0.2, 0.7)
-
-toolbox.register("individual", tools.initCycle, creator.Individual,
-                 (toolbox.attr_Donchian_Period, toolbox.attr_order_factor, toolbox.attr_ichimoku_trend_factor,
-                  toolbox.attr_risk_per_trade, toolbox.attr_stop_distance_factor,
-                  toolbox.attr_take_profit_distance_factor, toolbox.attr_take_profit_trigger_factor), n=1)
-
-toolbox.register("population", tools.initRepeat, list, toolbox.individual)
-
 
 # Fitness function
 def evaluate(individual):
@@ -96,17 +70,42 @@ def evaluate(individual):
     print(f"  Take Profit Distance Factor: {individual[5]}")
     print(f"  Take Profit Trigger Factor: {individual[6]}")
     print(f"Returns: ${returns:.2f}")
-    print(f"Drawdown: {drawdown:.2f}%\n")
+    print(f"Drawdown: {-drawdown:.2f}%\n")
 
     # Return as a tuple since DEAP minimizes the fitness function
     return returns, -drawdown
 
 
+starting_capital = 10000
+commission = 0.00035
+n_population = 2
+n_gen = 2
+
+# Define the fitness function: maximize returns and minimize drawdown
+creator.create("FitnessMulti", base.Fitness, weights=(1.0, -1.0))  # Maximize returns, minimize drawdown
+creator.create("Individual", list, fitness=creator.FitnessMulti)
+
+toolbox = base.Toolbox()
+
+# Define ranges for each parameter
+toolbox.register("attr_Donchian_Period", random.randint, 20, 50)
+toolbox.register("attr_order_factor", random.uniform, 0.01, 0.05)
+toolbox.register("attr_ichimoku_trend_factor", random.uniform, 0.01, 0.05)
+toolbox.register("attr_risk_per_trade", random.uniform, 0.001, 0.01)
+toolbox.register("attr_stop_distance_factor", random.uniform, 0.01, 0.05)
+toolbox.register("attr_take_profit_distance_factor", random.uniform, 0.01, 0.05)
+toolbox.register("attr_take_profit_trigger_factor", random.uniform, 0.2, 0.7)
+
+toolbox.register("individual", tools.initCycle, creator.Individual,
+                 (toolbox.attr_Donchian_Period, toolbox.attr_order_factor, toolbox.attr_ichimoku_trend_factor,
+                  toolbox.attr_risk_per_trade, toolbox.attr_stop_distance_factor,
+                  toolbox.attr_take_profit_distance_factor, toolbox.attr_take_profit_trigger_factor), n=1)
+
+toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 toolbox.register("evaluate", evaluate)
 toolbox.register("mate", tools.cxBlend, alpha=0.5)
-toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=1, indpb=0.2)
-toolbox.register("select", tools.selTournament, tournsize=3)
-
+toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=0.1, indpb=0.2)
+toolbox.register("select", tools.selNSGA2)  # Multi-objective selection
 
 def main():
     pop = toolbox.population(n_population)  # Population size
@@ -151,9 +150,10 @@ def main():
     avg_loss = trade_analyzer.lost.pnl.average or 0
     avg_duration = trade_analyzer.len.average or 0
 
-
+    print('---Best run---')
+    print(f"Net Profit: {net_profit:.2f} / Net Profit Percentage: {(net_profit / starting_capital * 100):.2f}%")
+    print(f"Drawdown: {-drawdown:.2f}")
     print(f"Total Won: {won_trades} / Total Lost: {lost_trades}")
-    print(f"Net Profit: {net_profit:.2f} / Net Profit Percentage: {(total_trades / starting_capital * 100):.2f}%")
     print(f"Win Rate: {win_rate:.2f}%")
     print(f"Max Win Amount: {max_win:.2f} / Average Win Amount: {avg_win:.2f}")
     print(f"Max Loss Amount: {max_loss:.2f} / Average Loss Amount: {avg_loss:.2f}")
@@ -187,7 +187,28 @@ def main():
 
     quantstats.reports.html(ret, output='stats.html', title='Backtest results')
 
+    pool.close()
+    pool.join()
     # cerebro.plot()
 
 if __name__ == "__main__":
+    if sys.platform.startswith("win"):
+        multiprocessing.freeze_support()  # Required on Windows
+    start_time = time.time()  # Start tracking time
+
+    # Use multiprocessing pool for parallel evaluations
+    pool = multiprocessing.Pool()
+    toolbox.register("map", pool.map)
+
     main()
+
+    pool.close()
+    pool.join()
+
+    end_time = time.time()  # End time after process finishes
+    total_runs = n_population * n_gen  # Calculate total runs based on population and generations
+    elapsed_time = end_time - start_time  # Calculate elapsed time in seconds
+
+    # Print the summary
+    print(f"Total Runs: {total_runs}")
+    print(f"Elapsed Time: {elapsed_time:.2f} seconds")
