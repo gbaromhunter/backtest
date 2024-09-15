@@ -1,22 +1,22 @@
 Parameter,Value
-Donchian_Period,48.979143952099705
-order_factor,0.034938948509943786
-ichimoku_trend_factor,0.02703671341783521
-risk_per_trade,0.009833675820526182
-stop_distance_factor,0.020457995714249014
-take_profit_distance_factor,0.04396215841963691
-take_profit_trigger_factor,0.254055758392033
-Total Trades,2
+Donchian_Period,21
+order_factor,0.020591326004588434
+ichimoku_trend_factor,0.021302873598368355
+risk_per_trade,0.003972353763560988
+stop_distance_factor,0.013972831815552044
+take_profit_distance_factor,0.03651857806567647
+take_profit_trigger_factor,0.5820361647625966
+Total Trades,3
 Won Trades,2
-Lost Trades,0
-Net Profit,265.8367036700004
-Net Profit Percentage,2.66%
-Drawdown,-2.72751344142698%
-Win Rate,100.00%
-Max Win Amount,263.44419467000046
-Average Win Amount,132.9183518350002
-Max Loss Amount,0
-Average Loss Amount,0
-Average Trade Duration (Minutes),7047.0
-Average Trade Duration (Hours),117.45
-Average Trade Duration (Days),1.9575
+Lost Trades,1
+Net Profit,82.83072787000019
+Net Profit Percentage,0.83%
+Drawdown,-1.306725455469223%
+Win Rate,66.67%
+Max Win Amount,124.78935537000022
+Average Win Amount,62.964322685000106
+Max Loss Amount,-43.09791750000002
+Average Loss Amount,-43.09791750000002
+Average Trade Duration (Minutes),5153.333333333333
+Average Trade Duration (Hours),85.88888888888889
+Average Trade Duration (Days),1.4314814814814814

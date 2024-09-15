@@ -401,3 +401,24 @@ def fetch_intraday_data_from_alphavantage(ticker, start_year, start_month, month
     else:
         print("No data was retrieved.")
 
+# Function to load cached results from CSV file into a dictionary
+def load_cache(csv_file='hyperopt_cache.csv'):
+    cache = {}
+    if os.path.exists(csv_file):
+        with open(csv_file, mode='r') as file:
+            reader = csv.reader(file)
+            for row in reader:
+                params = tuple(map(float, row[:-2]))  # Convert parameter values to float
+                results = (float(row[-2]), float(row[-1]))  # Returns and drawdown
+                cache[params] = results
+    return cache
+
+def update_cache(new_entries, csv_file='hyperopt_cache.csv'):
+    with open(csv_file, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows(new_entries)  # Write all new entries at once
+
+def write_cache(bulk_cache_updates):
+    if bulk_cache_updates:
+        update_cache(bulk_cache_updates)
+        bulk_cache_updates.clear()  # Clear after writing to avoid duplication

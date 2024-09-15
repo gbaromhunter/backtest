@@ -1,18 +1,16 @@
-import random, csv
+import sys, time, warnings, random, csv
 from deap import base, creator, tools, algorithms
-import backtrader as bt
-import warnings
 from Strat import MyStrategy
-from support import define_data_alphavantage, FixedRiskSizer, CommissionAnalyzer
+import backtrader as bt
+from support import FixedRiskSizer, CommissionAnalyzer, define_data_alphavantage, load_cache, write_cache
 import quantstats
 import multiprocessing
 warnings.simplefilter(action='ignore', category=FutureWarning)
-import sys
-import time
 
 
 data, total_candles = define_data_alphavantage('AMZN', start_year=2023, start_month=5, months=15, interval='1min')
-
+param_cache = load_cache()
+bulk_cache_updates = []
 
 def create_data():
     cerebro = bt.Cerebro()
@@ -34,6 +32,13 @@ def create_data():
 # Fitness function
 def evaluate(individual):
     cerebro = create_data()
+
+    params = tuple(individual)  # Convert params to tuple for caching
+
+    # Check if the parameters already exist in cache
+    if params in param_cache:
+        print(f"Using cached result for parameters: {params}")
+        return param_cache[params]  # Return cached result
 
     donchian_period = max(20, min(individual[0], 50))  # Clamped between 20 and 50
     order_factor = max(0.01, min(individual[1], 0.05))  # Clamped between 0.01 and 0.05
@@ -71,6 +76,10 @@ def evaluate(individual):
     print(f"  Take Profit Trigger Factor: {individual[6]}")
     print(f"Returns: ${returns:.2f}")
     print(f"Drawdown: {-drawdown:.2f}%\n")
+
+    # Cache the new result
+    param_cache[params] = (returns, -drawdown)  # Cache in memory
+    bulk_cache_updates.append((list(params) + [returns, -drawdown]))  # Prepare for bulk writing
 
     # Return as a tuple since DEAP minimizes the fitness function
     return returns, -drawdown
@@ -186,6 +195,8 @@ def main():
         writer.writerow(['Average Trade Duration (Days)', avg_duration / 3600])
 
     quantstats.reports.html(ret, output='stats.html', title='Backtest results')
+
+    write_cache(bulk_cache_updates)
 
     pool.close()
     pool.join()
