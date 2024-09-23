@@ -112,23 +112,23 @@ class MyStrategy(bt.Strategy):
 
     def check_long_condition(self):
         """Check if the Chikou Span has broken the Kumo upwards (long condition)."""
-        chikou_span = self.ichimoku.lines.chikou_span[0]
-        senkou_span_a = self.ichimoku.lines.senkou_span_a[-27]
-        senkou_span_b = self.ichimoku.lines.senkou_span_b[-27]
+        close = self.data0.close[0]
+        senkou_span_a = self.ichimoku.lines.senkou_span_a[0]
+        senkou_span_b = self.ichimoku.lines.senkou_span_b[0]
 
-        # Chikou Span crosses above the Kumo (upper cloud)
-        if chikou_span > max(senkou_span_a, senkou_span_b):
+        # price crosses above the Kumo (upper cloud)
+        if close > max(senkou_span_a, senkou_span_b):
             return True
         return False
 
     def check_short_condition(self):
         """Check if the Chikou Span has broken the Kumo downwards (short condition)."""
-        chikou_span = self.ichimoku.lines.chikou_span[0]
-        senkou_span_a = self.ichimoku.lines.senkou_span_a[-27]
-        senkou_span_b = self.ichimoku.lines.senkou_span_b[-27]
+        close = self.data0.close[0]
+        senkou_span_a = self.ichimoku.lines.senkou_span_a[0]
+        senkou_span_b = self.ichimoku.lines.senkou_span_b[0]
 
-        # Chikou Span crosses below the Kumo (lower cloud)
-        if chikou_span < min(senkou_span_a, senkou_span_b):
+        # price crosses below the Kumo (lower cloud)
+        if close < min(senkou_span_a, senkou_span_b):
             return True
         return False
 

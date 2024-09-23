@@ -10,6 +10,7 @@ import pandas as pd
 import requests
 from io import StringIO
 import sqlite3
+from key import api_key
 
 
 class DonchianChannels(Indicator):
@@ -241,7 +242,6 @@ def fetch_intraday_data_from_alphavantage(ticker, start_year, start_month, month
     - interval (str): Interval for intraday data ('1min', '5min', '15min', '30min', '60min')
     - months (list of str): List of months to fetch data for in 'YYYY-MM' format (e.g., ['2024-01', '2024-02'])
     """
-    api_key = '5BAAAUMO47W9TG46'
     all_data = []
     for _ in range(months):
         if start_month > 12:
