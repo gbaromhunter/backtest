@@ -22,7 +22,7 @@ class MyStrategy(bt.Strategy):
     )
 
     def __init__(self):
-        '''Initializes all variables to be used in this strategy'''
+        """Initializes all variables to be used in this strategy"""
 
         self.starting_value = self.broker.getvalue()  # Store the initial value at the start
         self.order = None
@@ -43,9 +43,7 @@ class MyStrategy(bt.Strategy):
         self.ichimoku1 = bt.indicators.Ichimoku(self.data2, plot=False)
 
         # Set Flags, Checks, Conditions
-        self.uptrend = False
-        self.downtrend = False
-        self.notrend = False
+        self.uptrend = self.downtrend = self.notrend = False
 
 
     def total_pnl_percentage(self):
@@ -54,14 +52,14 @@ class MyStrategy(bt.Strategy):
         return pnl, pnl_percentage
 
     def log(self, txt, doprint=True):
-        '''Logs any given text with the time and date as long as doprint=True'''
+        """Logs any given text with the time and date as long as doprint=True"""
         date = self.data.datetime.date(0)
         time = self.data.datetime.time(0)
         if doprint:
             print(str(date) + ' ' + str(time) + '--' + txt)
 
     def notify_order(self, order):
-        '''Run on every next iteration. Checks order status and logs accordingly'''
+        """Run on every next iteration. Checks order status and logs accordingly"""
         if order.status in [order.Submitted, order.Accepted]:
             # Order has been submitted or accepted but not yet completed
             return
@@ -86,8 +84,8 @@ class MyStrategy(bt.Strategy):
         self.order = None
 
     def notify_trade(self, trade):
-        '''Run on every next iteration. Logs data on every trade when closed.'''
-        trade_pnl = (trade.pnlcomm / (self.last_value)) * 100
+        """Run on every next iteration. Logs data on every trade when closed."""
+        trade_pnl = (trade.pnlcomm / self.last_value) * 100
         if trade.isclosed:
             pnl, pnl_percentage = self.total_pnl_percentage()
             self.log('CLOSED   Gross P/L: {:.2f}, Net P/L: {:.2f}, P/L Percentage: {:.2f}%, Current Capital: {:.2f}, Total P/L: {:.2f}, Total P/L Percentage: {:.2f}%'.format(trade.pnl, trade.pnlcomm, trade_pnl, self.broker.getvalue(), pnl, pnl_percentage))
@@ -97,70 +95,64 @@ class MyStrategy(bt.Strategy):
     def stop(self):
         pass
 
-    def buy_condition(self):
-        conditions = [
-            self.data0.close[0] < self.donchian.lines.dcl[0] + (self.donchian.lines.dcl[0] * self.params.order_factor)
-        ]
-        if all(conditions):
-            return True
-
-    def sell_condition(self):
-        conditions = [
-            self.data0.close[0] > self.donchian.lines.dch[0] - (self.donchian.lines.dch[0] * self.params.order_factor)
-        ]
-        if all(conditions):
-            return True
-
     def define_trend(self):
-        minimum_distance = max([self.ichimoku1.lines.senkou_span_a[0], self.ichimoku1.lines.senkou_span_b[0]]) * self.params.ichimoku_trend_factor
-        if all([
-                self.data0.close[0] > self.ichimoku1.lines.senkou_span_a[0] + minimum_distance,
-                self.data0.close[0] > self.ichimoku1.lines.senkou_span_b[0] + minimum_distance,
-                ]):
+        senkou_span_a = self.ichimoku1.lines.senkou_span_a[0]
+        senkou_span_b = self.ichimoku1.lines.senkou_span_b[0]
+        close_price = self.data0.close[0]
+
+        max_senkou = max(senkou_span_a, senkou_span_b)
+        minimum_distance = max_senkou * self.params.ichimoku_trend_factor
+
+        if close_price > max_senkou + minimum_distance:
             self.uptrend, self.downtrend, self.notrend = True, False, False
-        elif all([
-                  self.data0.close[0] < self.ichimoku1.lines.senkou_span_a[0] - minimum_distance,
-                  self.data0.close[0] < self.ichimoku1.lines.senkou_span_b[0] - minimum_distance,
-                 ]):
+        elif close_price < min(senkou_span_a, senkou_span_b) - minimum_distance:
             self.uptrend, self.downtrend, self.notrend = False, True, False
         else:
             self.uptrend, self.downtrend, self.notrend = False, False, True
 
-    def buy_logic(self):
-        # Ensure no position is opened and no active buy orders exist
-        if self.position.size == 0 and not self.order:
-            if self.uptrend:
-                if self.buy_condition():
-                    # Calculate stop-loss and take-profit based on Donchian channels
-                    stop_price = self.donchian.lines.dcl[0] * (1 - self.params.stop_distance_factor)
-                    take_profit_price = self.donchian.lines.dch[0] * (1 + self.params.take_profit_distance_factor)
+    def check_long_condition(self):
+        """Check if the Chikou Span has broken the Kumo upwards (long condition)."""
+        chikou_span = self.ichimoku.lines.chikou_span[0]
+        senkou_span_a = self.ichimoku.lines.senkou_span_a[-27]
+        senkou_span_b = self.ichimoku.lines.senkou_span_b[-27]
 
-                    # Validate stop and take-profit prices (ensure they make sense)
-                    if stop_price > 0 and take_profit_price > 0:
-                        self.stop_price = stop_price
-                        self.take_profit_price = take_profit_price
-                        self.order = self.buy()  # Place the buy order
-                        self.log('Long placed')
-                        return True
+        # Chikou Span crosses above the Kumo (upper cloud)
+        if chikou_span > max(senkou_span_a, senkou_span_b):
+            return True
         return False
 
-    def sell_logic(self):
-        # Ensure no position is opened and no active sell orders exist
-        if self.position.size == 0 and not self.order:
-            if self.downtrend:
-                if self.sell_condition():
-                    # Calculate stop-loss and take-profit based on Donchian channels
-                    stop_price = self.donchian.lines.dch[0] * (1 + self.params.stop_distance_factor)
-                    take_profit_price = self.donchian.lines.dcl[0] * (1 - self.params.take_profit_distance_factor)
+    def check_short_condition(self):
+        """Check if the Chikou Span has broken the Kumo downwards (short condition)."""
+        chikou_span = self.ichimoku.lines.chikou_span[0]
+        senkou_span_a = self.ichimoku.lines.senkou_span_a[-27]
+        senkou_span_b = self.ichimoku.lines.senkou_span_b[-27]
 
-                    # Validate stop and take-profit prices (ensure they make sense)
-                    if stop_price > 0 and take_profit_price > 0:
-                        self.stop_price = stop_price
-                        self.take_profit_price = take_profit_price
-                        self.order = self.sell()  # Place the sell order
-                        self.log('Short placed')
-                        return True
+        # Chikou Span crosses below the Kumo (lower cloud)
+        if chikou_span < min(senkou_span_a, senkou_span_b):
+            return True
         return False
+
+    def open_an_order(self):
+        """
+        A helper function to calculate the stop-loss and take-profit prices
+        based on the current position type (long or short) determined by conditions.
+
+        :return: (stop_price, take_profit_price) tuple if valid, otherwise (None, None).
+        """
+        if self.check_long_condition():  # Long condition detected
+            self.stop_price = self.donchian.lines.dcl[0] * (1 - self.params.stop_distance_factor)
+            self.take_profit_price = self.donchian.lines.dch[0] * (1 + self.params.take_profit_distance_factor)
+            self.order = self.buy()  # Place the buy order
+            self.log('Long placed')
+            return True
+        elif self.check_short_condition():  # Short condition detected
+            self.stop_price = self.donchian.lines.dch[0] * (1 + self.params.stop_distance_factor)
+            self.take_profit_price = self.donchian.lines.dcl[0] * (1 - self.params.take_profit_distance_factor)
+            self.order = self.sell()  # Place the sell order
+            self.log('Short placed')
+            return True
+        return False
+
 
     def stop_loss_logic(self):
         # Long position stop loss logic
@@ -213,23 +205,20 @@ class MyStrategy(bt.Strategy):
         return False
 
     def next(self):
-        '''Runs for every candlestick. Checks conditions to enter and exit trades.'''
-        # Check if there is already an order
-        if self.order:
-            return
-        # define the trend
-        self.define_trend()
-        # BUY
-        self.buy_logic()
-        self.sell_logic()
+        """Runs for every candlestick. Checks conditions to enter and exit trades."""
 
-        # STOP LOSS
-        if self.stop_loss_logic():
-            return
+        """Runs on each candle and handles the entire trading logic."""
 
-        # TAKE PROFIT
-        self.take_profit_logic()
+        # Check if there is an active order
+        if self.order: return
 
+        if not self.position:
+            # Calculate stop-loss and take-profit
+            if self.open_an_order(): return
+
+        # Handle stop-loss and take-profit logic if a position is already open
+        if self.stop_loss_logic(): return
+        if self.take_profit_logic(): return
 
         # Close the last trade to not influence final results with an open trade
         if len(self.data0) == self.total_candles -1:

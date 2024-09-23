@@ -96,11 +96,11 @@ def evaluate(individual):
 
 starting_capital = 10000
 commission = 0.00035
-n_population = 2
-n_gen = 2
+n_population = 15
+n_gen = 15
 
 # Define the fitness function: maximize returns and minimize drawdown
-creator.create("FitnessMulti", base.Fitness, weights=(1.0, -1.0))  # Maximize returns, minimize drawdown
+creator.create("FitnessMulti", base.Fitness, weights=(1.0, -2.0))  # Maximize returns, minimize drawdown
 creator.create("Individual", list, fitness=creator.FitnessMulti)
 
 toolbox = base.Toolbox()
