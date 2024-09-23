@@ -96,8 +96,8 @@ def evaluate(individual):
 
 starting_capital = 10000
 commission = 0.00035
-n_population = 15
-n_gen = 15
+n_population = 2
+n_gen = 2
 
 # Define the fitness function: maximize returns and minimize drawdown
 creator.create("FitnessMulti", base.Fitness, weights=(1.0, -2.0))  # Maximize returns, minimize drawdown
@@ -204,8 +204,9 @@ def main():
         writer.writerow(['Average Trade Duration (Hours)', avg_duration / 60])
         writer.writerow(['Average Trade Duration (Days)', avg_duration / 3600])
 
-    quantstats.reports.html(ret, output='stats.html', title='Backtest results')
-    # cerebro.plot()
+    if total_trades > 0:
+        quantstats.reports.html(ret, output='stats.html', title='Backtest results')
+        # cerebro.plot()
 
 
 if __name__ == "__main__":
